@@ -35,6 +35,10 @@
 #include "sensors/acceleration.h"
 #include "sensors/boardalignment.h"
 
+#include "io/escservo.h"
+#include "io/rc_controls.h"
+#include "io/rc_curves.h"
+
 #include "flight/pid.h"
 #include "flight/imu.h"
 #include "flight/navigation_rewrite.h"
@@ -88,8 +92,8 @@ static void updateAltitudeVelocityController_MC(uint32_t deltaMicros)
 static void updateAltitudeThrottleController_MC(uint32_t deltaMicros)
 {
     // Calculate min and max throttle boundaries (to compensate for integral windup)
-    int16_t thrAdjustmentMin = (int16_t)posControl.escAndServoConfig->minthrottle - (int16_t)posControl.navConfig->mc_hover_throttle;
-    int16_t thrAdjustmentMax = (int16_t)posControl.escAndServoConfig->maxthrottle - (int16_t)posControl.navConfig->mc_hover_throttle;
+    int16_t thrAdjustmentMin = (int16_t)posControl.escAndServoConfig->minthrottle - (int16_t)lookupThrottleRCMid;
+    int16_t thrAdjustmentMax = (int16_t)posControl.escAndServoConfig->maxthrottle - (int16_t)lookupThrottleRCMid;
 
     posControl.rcAdjustment[THROTTLE] = navPidApply2(posControl.desiredState.vel.V.Z, posControl.actualState.vel.V.Z, US2S(deltaMicros), &posControl.pids.vel[Z], thrAdjustmentMin, thrAdjustmentMax, false);
 
@@ -167,7 +171,7 @@ static void applyMulticopterAltitudeController(uint32_t currentTime)
     }
 
     // Update throttle controller
-    rcCommand[THROTTLE] = constrain((int16_t)posControl.navConfig->mc_hover_throttle + posControl.rcAdjustment[THROTTLE], posControl.escAndServoConfig->minthrottle, posControl.escAndServoConfig->maxthrottle);
+    rcCommand[THROTTLE] = constrain((int16_t)lookupThrottleRCMid + posControl.rcAdjustment[THROTTLE], posControl.escAndServoConfig->minthrottle, posControl.escAndServoConfig->maxthrottle);
 
     // Save processed throttle for future use
     rcCommandAdjustedThrottle = rcCommand[THROTTLE];
@@ -494,7 +498,7 @@ static void applyMulticopterEmergencyLandingController(uint32_t currentTime)
         }
 
         // Update throttle controller
-        rcCommand[THROTTLE] = constrain((int16_t)posControl.navConfig->mc_hover_throttle + posControl.rcAdjustment[THROTTLE], posControl.escAndServoConfig->minthrottle, posControl.escAndServoConfig->maxthrottle);
+        rcCommand[THROTTLE] = constrain((int16_t)lookupThrottleRCMid + posControl.rcAdjustment[THROTTLE], posControl.escAndServoConfig->minthrottle, posControl.escAndServoConfig->maxthrottle);
     }
     else {
         /* Sensors has gone haywire, attempt to land regardless */
