@@ -322,11 +322,12 @@ static const char * const boardIdentifier = TARGET_BOARD_IDENTIFIER;
 #define MSP_STATUS_EX            150    //out message         cycletime, errors_count, CPU load, sensor present etc
 #define MSP_UID                  160    //out message         Unique device ID
 #define MSP_GPSSVINFO            164    //out message         get Signal Strength (only U-Blox)
+#define MSP_GPSSTATISTICS        166    //out message         get GPS debugging data
 #define MSP_ACC_TRIM             240    //out message         get acc angle trim values
 #define MSP_SET_ACC_TRIM         239    //in message          set acc angle trim values
 #define MSP_SERVO_MIX_RULES      241    //out message         Returns servo mixer configuration
 #define MSP_SET_SERVO_MIX_RULE   242    //in message          Sets servo mixer configuration
-#define MSP_SET_1WIRE            243    //in message          Sets 1Wire paththrough 
+#define MSP_SET_1WIRE            243    //in message          Sets 1Wire paththrough
 
 #define INBUF_SIZE 64
 
@@ -357,7 +358,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT + 1] = {
     { BOXGOV, "GOVERNOR;", 18 },
     { BOXOSD, "OSD SW;", 19 },
     { BOXTELEMETRY, "TELEMETRY;", 20 },
-    { BOXGTUNE, "GTUNE;", 21 },
+    //{ BOXGTUNE, "GTUNE;", 21 },
     { BOXSERVO1, "SERVO1;", 23 },
     { BOXSERVO2, "SERVO2;", 24 },
     { BOXSERVO3, "SERVO3;", 25 },
@@ -714,10 +715,6 @@ void mspInit(serialConfig_t *serialConfig)
         activeBoxIds[activeBoxIdCount++] = BOXFAILSAFE;
     }
 
-#ifdef GTUNE
-    activeBoxIds[activeBoxIdCount++] = BOXGTUNE;
-#endif
-
     memset(mspPorts, 0x00, sizeof(mspPorts));
     mspAllocateSerialPorts(serialConfig);
 }
@@ -747,7 +744,6 @@ static uint32_t packFlightModeFlags(void)
         IS_ENABLED(IS_RC_MODE_ACTIVE(BOXGOV)) << BOXGOV |
         IS_ENABLED(IS_RC_MODE_ACTIVE(BOXOSD)) << BOXOSD |
         IS_ENABLED(IS_RC_MODE_ACTIVE(BOXTELEMETRY)) << BOXTELEMETRY |
-        IS_ENABLED(IS_RC_MODE_ACTIVE(BOXGTUNE)) << BOXGTUNE |
         IS_ENABLED(ARMING_FLAG(ARMED)) << BOXARM |
         IS_ENABLED(IS_RC_MODE_ACTIVE(BOXBLACKBOX)) << BOXBLACKBOX |
         IS_ENABLED(FLIGHT_MODE(FAILSAFE_MODE)) << BOXFAILSAFE |
@@ -764,7 +760,7 @@ static uint32_t packFlightModeFlags(void)
         if (flag)
             junk |= 1 << i;
     }
-    
+
     return junk;
 }
 
@@ -971,7 +967,7 @@ static bool processOutCommand(uint8_t cmdMSP)
         break;
     case MSP_ARMING_CONFIG:
         headSerialReply(2);
-        serialize8(masterConfig.auto_disarm_delay); 
+        serialize8(masterConfig.auto_disarm_delay);
         serialize8(masterConfig.disarm_kill_switch);
         break;
     case MSP_LOOP_TIME:
@@ -993,29 +989,10 @@ static bool processOutCommand(uint8_t cmdMSP)
         break;
     case MSP_PID:
         headSerialReply(3 * PID_ITEM_COUNT);
-        if (IS_PID_CONTROLLER_FP_BASED(currentProfile->pidProfile.pidController)) { // convert float stuff into uint8_t to keep backwards compatability with all 8-bit shit with new pid
-            for (i = 0; i < 3; i++) {
-                serialize8(constrain(lrintf(currentProfile->pidProfile.P_f[i] * 10.0f), 0, 255));
-                serialize8(constrain(lrintf(currentProfile->pidProfile.I_f[i] * 100.0f), 0, 255));
-                serialize8(constrain(lrintf(currentProfile->pidProfile.D_f[i] * 1000.0f), 0, 255));
-            }
-            for (i = 3; i < PID_ITEM_COUNT; i++) {
-                if (i == PIDLEVEL) {
-                    serialize8(constrain(lrintf(currentProfile->pidProfile.A_level * 10.0f), 0, 255));
-                    serialize8(constrain(lrintf(currentProfile->pidProfile.H_level * 10.0f), 0, 255));
-                    serialize8(constrain(lrintf(currentProfile->pidProfile.H_sensitivity), 0, 255));
-                } else {
-                    serialize8(currentProfile->pidProfile.P8[i]);
-                    serialize8(currentProfile->pidProfile.I8[i]);
-                    serialize8(currentProfile->pidProfile.D8[i]);
-                }
-            }
-        } else {
-            for (i = 0; i < PID_ITEM_COUNT; i++) {
-                serialize8(currentProfile->pidProfile.P8[i]);
-                serialize8(currentProfile->pidProfile.I8[i]);
-                serialize8(currentProfile->pidProfile.D8[i]);
-            }
+        for (i = 0; i < PID_ITEM_COUNT; i++) {
+            serialize8(currentProfile->pidProfile.P8[i]);
+            serialize8(currentProfile->pidProfile.I8[i]);
+            serialize8(currentProfile->pidProfile.D8[i]);
         }
         break;
     case MSP_PIDNAMES:
@@ -1024,7 +1001,7 @@ static bool processOutCommand(uint8_t cmdMSP)
         break;
     case MSP_PID_CONTROLLER:
         headSerialReply(1);
-        serialize8(currentProfile->pidProfile.pidController);
+        serialize8(2);      // FIXME: Report as LuxFloat
         break;
     case MSP_MODE_RANGES:
         headSerialReply(4 * MAX_MODE_ACTIVATION_CONDITION_COUNT);
@@ -1108,7 +1085,7 @@ static bool processOutCommand(uint8_t cmdMSP)
         break;
 #ifdef GPS
     case MSP_RAW_GPS:
-        headSerialReply(16);
+        headSerialReply(18);
         serialize8(STATE(GPS_FIX));
         serialize8(gpsSol.numSat);
         serialize32(gpsSol.llh.lat);
@@ -1116,6 +1093,7 @@ static bool processOutCommand(uint8_t cmdMSP)
         serialize16(gpsSol.llh.alt/100); // meters
         serialize16(gpsSol.groundSpeed);
         serialize16(gpsSol.groundCourse);
+        serialize16(gpsSol.hdop);
         break;
     case MSP_COMP_GPS:
         headSerialReply(5);
@@ -1150,14 +1128,25 @@ static bool processOutCommand(uint8_t cmdMSP)
         break;
 #endif
     case MSP_GPSSVINFO:
-        headSerialReply(1 + (gpsSol.numCh * 4));
-        serialize8(gpsSol.numCh);
-           for (i = 0; i < gpsSol.numCh; i++){
-               serialize8(gpsSol.svInfo[i].chn);
-               serialize8(gpsSol.svInfo[i].svid);
-               serialize8(gpsSol.svInfo[i].quality);
-               serialize8(gpsSol.svInfo[i].cno);
-           }
+        /* Compatibility stub - return zero SVs */
+        headSerialReply(1 + (1 * 4));
+        serialize8(1);
+
+        // HDOP
+        serialize8(0);
+        serialize8(0);
+        serialize8(gpsSol.hdop / 100);
+        serialize8(gpsSol.hdop / 100);
+        break;
+    case MSP_GPSSTATISTICS:
+        headSerialReply(32);
+        serialize16(gpsStats.lastMessageDt);
+        serialize32(gpsStats.errors);
+        serialize32(gpsStats.timeouts);
+        serialize32(gpsStats.packetCount);
+        serialize16(gpsSol.hdop);
+        serialize16(gpsSol.eph);
+        serialize16(gpsSol.epv);
         break;
 #endif
     case MSP_DEBUG:
@@ -1417,33 +1406,13 @@ static bool processInCommand(void)
         masterConfig.looptime = read16();
         break;
     case MSP_SET_PID_CONTROLLER:
-        currentProfile->pidProfile.pidController = constrain(read8(), 1, 2);  // Temporary configurator compatibility
-        pidSetController(currentProfile->pidProfile.pidController);
+        // FIXME: Do nothing
         break;
     case MSP_SET_PID:
-        if (IS_PID_CONTROLLER_FP_BASED(currentProfile->pidProfile.pidController)) {
-            for (i = 0; i < 3; i++) {
-                currentProfile->pidProfile.P_f[i] = (float)read8() / 10.0f;
-                currentProfile->pidProfile.I_f[i] = (float)read8() / 100.0f;
-                currentProfile->pidProfile.D_f[i] = (float)read8() / 1000.0f;
-            }
-            for (i = 3; i < PID_ITEM_COUNT; i++) {
-                if (i == PIDLEVEL) {
-                    currentProfile->pidProfile.A_level = (float)read8() / 10.0f;
-                    currentProfile->pidProfile.H_level = (float)read8() / 10.0f;
-                    currentProfile->pidProfile.H_sensitivity = read8();
-                } else {
-                    currentProfile->pidProfile.P8[i] = read8();
-                    currentProfile->pidProfile.I8[i] = read8();
-                    currentProfile->pidProfile.D8[i] = read8();
-                }
-            }
-        } else {
-            for (i = 0; i < PID_ITEM_COUNT; i++) {
-                currentProfile->pidProfile.P8[i] = read8();
-                currentProfile->pidProfile.I8[i] = read8();
-                currentProfile->pidProfile.D8[i] = read8();
-            }
+        for (i = 0; i < PID_ITEM_COUNT; i++) {
+            currentProfile->pidProfile.P8[i] = read8();
+            currentProfile->pidProfile.I8[i] = read8();
+            currentProfile->pidProfile.D8[i] = read8();
         }
         break;
     case MSP_SET_MODE_RANGE:
@@ -1562,7 +1531,7 @@ static bool processInCommand(void)
         }
 #endif
         break;
-        
+
     case MSP_SET_SERVO_MIX_RULE:
 #ifdef USE_SERVOS
         i = read8();
@@ -1596,14 +1565,14 @@ static bool processInCommand(void)
 
     case MSP_SET_RESET_CURR_PID:
         resetPidProfile(&currentProfile->pidProfile);
-        break;    
+        break;
 
     case MSP_SET_SENSOR_ALIGNMENT:
         masterConfig.sensorAlignmentConfig.gyro_align = read8();
         masterConfig.sensorAlignmentConfig.acc_align = read8();
         masterConfig.sensorAlignmentConfig.mag_align = read8();
         break;
-        
+
     case MSP_RESET_CONF:
         if (!ARMING_FLAG(ARMED)) {
             resetEEPROM();
@@ -1870,7 +1839,7 @@ static bool processInCommand(void)
                 waitForSerialPortToFinishTransmitting(currentPort->port);
                 // Start to activate here
                 // motor 1 => index 0
-                
+
                 // search currentPort portIndex
                 /* next lines seems to be unnecessary, because the currentPort always point to the same mspPorts[portIndex]
                 uint8_t portIndex;	
@@ -1889,7 +1858,7 @@ static bool processInCommand(void)
                 mspAllocateSerialPorts(&masterConfig.serialConfig);
                 /* restore currentPort and mspSerialPort
                 setCurrentPort(&mspPorts[portIndex]); // not needed same index will be restored
-                */ 
+                */
                 // former used MSP uart is active again
                 // restore MSP_SET_1WIRE as current command for correct headSerialReply(0)
                 currentPort->cmdMSP = MSP_SET_1WIRE;

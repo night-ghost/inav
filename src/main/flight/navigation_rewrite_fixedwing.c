@@ -35,10 +35,15 @@
 #include "sensors/acceleration.h"
 #include "sensors/boardalignment.h"
 
+#include "io/escservo.h"
+#include "io/rc_controls.h"
+#include "io/rc_curves.h"
+
 #include "flight/pid.h"
 #include "flight/imu.h"
 #include "flight/navigation_rewrite.h"
 #include "flight/navigation_rewrite_private.h"
+#include "flight/failsafe.h"
 
 #include "config/runtime_config.h"
 #include "config/config.h"
@@ -108,7 +113,7 @@ static void updateAltitudeVelocityAndPitchController_FW(uint32_t deltaMicros)
     posControl.rcAdjustment[PITCH] = climbAngleDeciDeg;
 
     // Calculate throttle adjustment
-    posControl.rcAdjustment[THROTTLE] = posControl.navConfig->fw_cruise_throttle + DECIDEGREES_TO_DEGREES(climbAngleDeciDeg) * posControl.navConfig->fw_pitch_to_throttle;
+    posControl.rcAdjustment[THROTTLE] = lookupThrottleRCMid + DECIDEGREES_TO_DEGREES(climbAngleDeciDeg) * posControl.navConfig->fw_pitch_to_throttle;
     posControl.rcAdjustment[THROTTLE] = constrain(posControl.rcAdjustment[THROTTLE], posControl.navConfig->fw_min_throttle, posControl.navConfig->fw_max_throttle);
 
 #if defined(NAV_BLACKBOX)
@@ -340,13 +345,13 @@ void applyFixedWingPitchRollThrottleController(void)
     if (isPitchAndThrottleAdjustmentValid) {
         // PITCH angle is measured in opposite direction ( >0 - dive, <0 - climb)
         pitchCorrection = constrain(pitchCorrection, -DEGREES_TO_CENTIDEGREES(posControl.navConfig->fw_max_dive_angle), DEGREES_TO_CENTIDEGREES(posControl.navConfig->fw_max_climb_angle));
-        rcCommand[PITCH] = -leanAngleToRcCommand(pitchCorrection);
+        rcCommand[PITCH] = -pidAngleToRcCommand(pitchCorrection);
         rcCommand[THROTTLE] = constrain(throttleCorrection, posControl.escAndServoConfig->minthrottle, posControl.escAndServoConfig->maxthrottle);
     }
 
     if (isRollAdjustmentValid) {
         rollCorrection = constrain(rollCorrection, -DEGREES_TO_CENTIDEGREES(posControl.navConfig->fw_max_bank_angle), DEGREES_TO_CENTIDEGREES(posControl.navConfig->fw_max_bank_angle));
-        rcCommand[ROLL] = leanAngleToRcCommand(rollCorrection);
+        rcCommand[ROLL] = pidAngleToRcCommand(rollCorrection);
     }
 }
 

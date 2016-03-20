@@ -35,7 +35,7 @@
 
 #include "build_config.h"
 
-#ifdef TELEMETRY
+#if defined(TELEMETRY) && defined(TELEMETRY_LTM)
 
 #include "common/maths.h"
 #include "common/axis.h"
@@ -135,11 +135,11 @@ static void ltm_gframe(void)
     if (!sensors(SENSOR_GPS))
         return;
 
-    if (!STATE(GPS_FIX))
+    if (gpsSol.fixType == GPS_NO_FIX)
         gps_fix_type = 1;
-    else if (gpsSol.numSat < 5)
+    else if (gpsSol.fixType == GPS_FIX_2D)
         gps_fix_type = 2;
-    else
+    else if (gpsSol.fixType == GPS_FIX_3D)
         gps_fix_type = 3;
 
     ltm_initialise_packet('G');

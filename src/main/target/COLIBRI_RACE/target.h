@@ -150,7 +150,6 @@
 #define GPS_PROTO_I2C_NAV
 #define GPS_PROTO_NAZA
 
-#define GTUNE
 #define LED_STRIP
 
 #define LED_STRIP_TIMER TIM16
@@ -172,6 +171,11 @@
 #define ENSURE_MPU_DATA_READY_IS_LOW
 
 #define TELEMETRY
+#define TELEMETRY_FRSKY
+#define TELEMETRY_HOTT
+#define TELEMETRY_SMARTPORT
+#define TELEMETRY_LTM
+
 #define SERIAL_RX
 #define USE_SERVOS
 #define USE_CLI
