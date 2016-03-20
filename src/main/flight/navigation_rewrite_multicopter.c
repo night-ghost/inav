@@ -103,7 +103,7 @@ static void updateAltitudeThrottleController_MC(uint32_t deltaMicros)
 
 bool adjustMulticopterAltitudeFromRCInput(void)
 {
-    int16_t rcThrottleAdjustment = rcCommand[THROTTLE] - posControl.rxConfig->midrc;
+    int16_t rcThrottleAdjustment = rcCommand[THROTTLE] - lookupThrottleRCMid;
     if (ABS(rcThrottleAdjustment) > posControl.rcControlsConfig->alt_hold_deadband) {
         // set velocity proportional to stick movement
         float rcClimbRate = rcThrottleAdjustment * posControl.navConfig->max_manual_climb_rate / 500;
