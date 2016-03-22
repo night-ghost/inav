@@ -629,8 +629,10 @@ void taskMainPidLoop(void)
         }
 
         if (thrTiltCompStrength) {
-            rcCommand[THROTTLE] = masterConfig.escAndServoConfig.minthrottle
-                                   + (rcCommand[THROTTLE] - masterConfig.escAndServoConfig.minthrottle) * calculateThrottleTiltCompensationFactor(thrTiltCompStrength);
+            rcCommand[THROTTLE] = constrain(masterConfig.escAndServoConfig.minthrottle
+                                            + (rcCommand[THROTTLE] - masterConfig.escAndServoConfig.minthrottle) * calculateThrottleTiltCompensationFactor(thrTiltCompStrength),
+                                            masterConfig.escAndServoConfig.minthrottle,
+                                            masterConfig.escAndServoConfig.maxthrottle);
         }
     }
 
