@@ -29,15 +29,14 @@ typedef enum {
 typedef enum {
     FD_ROLL = 0,
     FD_PITCH,
-    FD_YAW
+    FD_YAW,
+    FD_INDEX_COUNT
 } flight_dynamics_index_t;
 
-#define FLIGHT_DYNAMICS_INDEX_COUNT 3
 
 typedef enum {
     AI_ROLL = 0,
     AI_PITCH,
-    AI_YAW,
+    ANGLE_INDEX_COUNT
 } angle_index_t;
 
-#define ANGLE_INDEX_COUNT 3
