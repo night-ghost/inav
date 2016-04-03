@@ -136,3 +136,12 @@
 #define GTUNE
 #define USE_SERVOS
 #define USE_CLI
+
+#if !(defined(USE_SERIAL_4WAY_BLHELI_BOOTLOADER) || defined(USE_SERIAL_4WAY_SK_BOOTLOADER))
+ #ifdef USE_VCP
+ #define USE_SERIAL_1WIRE_VCP
+ #else
+ #define USE_SERIAL_1WIRE
+ #endif
+#endif
+
