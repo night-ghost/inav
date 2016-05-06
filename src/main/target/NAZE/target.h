@@ -124,6 +124,7 @@
 #define LED1
 #define INVERTER
 #define DISPLAY
+#define DISPLAY_ARMED_BITMAP
 
 #define USE_USART1
 #define USE_USART2
@@ -178,11 +179,11 @@
 #define GPS_PROTO_NAZA
 
 #define NAV
+//#define NAV_AUTO_MAG_DECLINATION
+#define NAV_GPS_GLITCH_DETECTION
 
-//#define GTUNE
-
-//#define LED_STRIP
-//#define LED_STRIP_TIMER TIM3
+#define LED_STRIP
+#define LED_STRIP_TIMER TIM3
 
 #define BLACKBOX
 #define TELEMETRY
@@ -202,14 +203,7 @@
 #define BIND_PORT  GPIOA
 #define BIND_PIN   Pin_3
 
-//#define USE_SERIAL_1WIRE
-
-// STM32F103CBT6-LQFP48 Pin30 (PA9) TX - PC3 connects to onboard CP2102 RX
-#define S1W_TX_GPIO         GPIOA
-#define S1W_TX_PIN          GPIO_Pin_9
-// STM32F103CBT6-LQFP48 Pin31 (PA10) RX - PC1 to onboard CP2102 TX
-#define S1W_RX_GPIO         GPIOA
-#define S1W_RX_PIN          GPIO_Pin_10
+//#define USE_SERIAL_4WAY_BLHELI_INTERFACE
 
 // alternative defaults for AlienWii32 F1 target
 #ifdef ALIENWII32
@@ -222,3 +216,5 @@
 #define BINDPLUG_PORT  GPIOB
 #define BINDPLUG_PIN   Pin_5
 #endif
+
+#define DISABLE_UNCOMMON_MIXERS

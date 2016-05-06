@@ -150,7 +150,6 @@
 #define GPS_PROTO_I2C_NAV
 #define GPS_PROTO_NAZA
 
-#define GTUNE
 #define LED_STRIP
 
 #define LED_STRIP_TIMER TIM16
@@ -180,3 +179,6 @@
 #define SERIAL_RX
 #define USE_SERVOS
 #define USE_CLI
+
+#define USE_SERIAL_4WAY_BLHELI_INTERFACE
+

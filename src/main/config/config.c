@@ -134,7 +134,7 @@ static uint32_t activeFeaturesLatch = 0;
 static uint8_t currentControlRateProfileIndex = 0;
 controlRateConfig_t *currentControlRateProfile;
 
-static const uint8_t EEPROM_CONF_VERSION = 114;
+static const uint8_t EEPROM_CONF_VERSION = 118;
 
 static void resetAccelerometerTrims(flightDynamicsTrims_t * accZero, flightDynamicsTrims_t * accGain)
 {
@@ -149,17 +149,15 @@ static void resetAccelerometerTrims(flightDynamicsTrims_t * accZero, flightDynam
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
-    pidProfile->pidController = PID_CONTROLLER_MWREWRITE;
-
-    pidProfile->P8[ROLL] = 40;
-    pidProfile->I8[ROLL] = 30;
-    pidProfile->D8[ROLL] = 23;
-    pidProfile->P8[PITCH] = 40;
-    pidProfile->I8[PITCH] = 30;
-    pidProfile->D8[PITCH] = 23;
-    pidProfile->P8[YAW] = 85;
-    pidProfile->I8[YAW] = 45;
-    pidProfile->D8[YAW] = 0;
+    pidProfile->P8[ROLL] = 30;
+    pidProfile->I8[ROLL] = 20;
+    pidProfile->D8[ROLL] = 70;
+    pidProfile->P8[PITCH] = 30;
+    pidProfile->I8[PITCH] = 20;
+    pidProfile->D8[PITCH] = 70;
+    pidProfile->P8[YAW] = 100;      // 2.5 * 40
+    pidProfile->I8[YAW] = 40;       // 4.0 * 10
+    pidProfile->D8[YAW] = 0;        // not used
     pidProfile->P8[PIDALT] = 50;    // NAV_POS_Z_P * 100
     pidProfile->I8[PIDALT] = 0;     // not used
     pidProfile->D8[PIDALT] = 0;     // not used
@@ -169,12 +167,12 @@ void resetPidProfile(pidProfile_t *pidProfile)
     pidProfile->P8[PIDPOSR] = 180;  // NAV_VEL_XY_P * 100
     pidProfile->I8[PIDPOSR] = 15;   // NAV_VEL_XY_I * 100
     pidProfile->D8[PIDPOSR] = 100;  // NAV_VEL_XY_D * 100
-    pidProfile->P8[PIDNAVR] = 14;   // FW_NAV_P * 100
-    pidProfile->I8[PIDNAVR] = 2;    // FW_NAV_I * 100
+    pidProfile->P8[PIDNAVR] = 10;   // FW_NAV_P * 100
+    pidProfile->I8[PIDNAVR] = 5;    // FW_NAV_I * 100
     pidProfile->D8[PIDNAVR] = 8;    // FW_NAV_D * 100
-    pidProfile->P8[PIDLEVEL] = 20;
-    pidProfile->I8[PIDLEVEL] = 20;
-    pidProfile->D8[PIDLEVEL] = 100;
+    pidProfile->P8[PIDLEVEL] = 120; // Self-level strength * 40 (4 * 40)
+    pidProfile->I8[PIDLEVEL] = 15;  // Self-leveing low-pass frequency (0 - disabled)
+    pidProfile->D8[PIDLEVEL] = 75;  // 75% horizon strength
     pidProfile->P8[PIDMAG] = 40;
     pidProfile->P8[PIDVEL] = 100;   // NAV_VEL_Z_P * 100
     pidProfile->I8[PIDVEL] = 50;    // NAV_VEL_Z_I * 100
@@ -182,47 +180,27 @@ void resetPidProfile(pidProfile_t *pidProfile)
 
     pidProfile->acc_soft_lpf_hz = 15;
     pidProfile->gyro_soft_lpf_hz = 60;
-
-    pidProfile->yaw_p_limit = YAW_P_LIMIT_MAX;
     pidProfile->dterm_lpf_hz = 30;
 
-    pidProfile->P_f[ROLL] = 1.4f;     // new PID with preliminary defaults test carefully
-    pidProfile->I_f[ROLL] = 0.3f;
-    pidProfile->D_f[ROLL] = 0.02f;
-    pidProfile->P_f[PITCH] = 1.4f;
-    pidProfile->I_f[PITCH] = 0.3f;
-    pidProfile->D_f[PITCH] = 0.02f;
-    pidProfile->P_f[YAW] = 3.5f;
-    pidProfile->I_f[YAW] = 0.4f;
-    pidProfile->D_f[YAW] = 0.01f;
-    pidProfile->A_level = 4.0f;
-    pidProfile->H_level = 4.0f;
-    pidProfile->H_sensitivity = 75;
+    pidProfile->yaw_p_limit = YAW_P_LIMIT_MAX;
 
-#ifdef GTUNE
-    pidProfile->gtune_lolimP[ROLL] = 10;          // [0..200] Lower limit of ROLL P during G tune.
-    pidProfile->gtune_lolimP[PITCH] = 10;         // [0..200] Lower limit of PITCH P during G tune.
-    pidProfile->gtune_lolimP[YAW] = 10;           // [0..200] Lower limit of YAW P during G tune.
-    pidProfile->gtune_hilimP[ROLL] = 100;         // [0..200] Higher limit of ROLL P during G tune. 0 Disables tuning for that axis.
-    pidProfile->gtune_hilimP[PITCH] = 100;        // [0..200] Higher limit of PITCH P during G tune. 0 Disables tuning for that axis.
-    pidProfile->gtune_hilimP[YAW] = 100;          // [0..200] Higher limit of YAW P during G tune. 0 Disables tuning for that axis.
-    pidProfile->gtune_pwr = 0;                    // [0..10] Strength of adjustment
-    pidProfile->gtune_settle_time = 450;          // [200..1000] Settle time in ms
-    pidProfile->gtune_average_cycles = 16;        // [8..128] Number of looptime cycles used for gyro average calculation
-#endif
+    pidProfile->max_angle_inclination[FD_ROLL] = 300;    // 30 degrees
+    pidProfile->max_angle_inclination[FD_PITCH] = 300;    // 30 degrees
 }
 
 #ifdef NAV
 void resetNavConfig(navConfig_t * navConfig)
 {
     // Navigation flags
+    navConfig->flags.use_thr_mid_for_althold = 1;
     navConfig->flags.extra_arming_safety = 1;
     navConfig->flags.user_control_mode = NAV_GPS_ATTI;
     navConfig->flags.rth_alt_control_style = NAV_RTH_AT_LEAST_ALT;
     navConfig->flags.rth_tail_first = 0;
+    navConfig->flags.disarm_on_landing = 0;
 
     // Inertial position estimator parameters
-#if defined(INAV_ENABLE_AUTO_MAG_DECLINATION)
+#if defined(NAV_AUTO_MAG_DECLINATION)
     navConfig->inav.automatic_mag_declination = 1;
 #endif
     navConfig->inav.gps_min_sats = 6;
@@ -230,10 +208,10 @@ void resetNavConfig(navConfig_t * navConfig)
     navConfig->inav.accz_unarmed_cal = 1;
     navConfig->inav.use_gps_velned = 0;         // "Disabled" is mandatory with gps_nav_model = LOW_G
 
-    navConfig->inav.w_z_baro_p = 1.0f;
+    navConfig->inav.w_z_baro_p = 0.35f;
 
-    navConfig->inav.w_z_gps_p = 0.3f;
-    navConfig->inav.w_z_gps_v = 0.3f;
+    navConfig->inav.w_z_gps_p = 0.2f;
+    navConfig->inav.w_z_gps_v = 0.2f;
 
     navConfig->inav.w_xy_gps_p = 1.0f;
     navConfig->inav.w_xy_gps_v = 2.0f;
@@ -248,11 +226,13 @@ void resetNavConfig(navConfig_t * navConfig)
 
     // General navigation parameters
     navConfig->pos_failure_timeout = 5;     // 5 sec
-    navConfig->waypoint_radius = 300;       // 3m
+    navConfig->waypoint_radius = 100;       // 2m diameter
     navConfig->max_speed = 300;             // 3 m/s = 10.8 km/h
     navConfig->max_manual_speed = 500;
     navConfig->max_manual_climb_rate = 200;
     navConfig->land_descent_rate = 200;     // 2 m/s
+    navConfig->land_slowdown_minalt = 500;  // 5 meters of altitude
+    navConfig->land_slowdown_maxalt = 2000; // 20 meters of altitude
     navConfig->emerg_descent_rate = 500;    // 5 m/s
     navConfig->min_rth_distance = 500;      // If closer than 5m - land immediately
     navConfig->rth_altitude = 1000;         // 10m
@@ -263,21 +243,27 @@ void resetNavConfig(navConfig_t * navConfig)
     navConfig->mc_min_fly_throttle = 1200;
 
     // Fixed wing
-    navConfig->fw_max_bank_angle = 30;      // 30 deg
+    navConfig->fw_max_bank_angle = 20;      // 30 deg
     navConfig->fw_max_climb_angle = 20;
     navConfig->fw_max_dive_angle = 15;
-    navConfig->fw_cruise_throttle = 1500;
-    navConfig->fw_max_throttle = 1900;
-    navConfig->fw_min_throttle = 1300;
-    navConfig->fw_pitch_to_throttle = 20;
-    navConfig->fw_loiter_radius = 3000;     // 30m
+    navConfig->fw_cruise_throttle = 1400;
+    navConfig->fw_max_throttle = 1700;
+    navConfig->fw_min_throttle = 1200;
+    navConfig->fw_pitch_to_throttle = 10;
+    navConfig->fw_roll_to_pitch = 75;
+    navConfig->fw_loiter_radius = 5000;     // 50m
+}
+
+void validateNavConfig(navConfig_t * navConfig)
+{
+    // Make sure minAlt is not more than maxAlt, maxAlt cannot be set lower than 500.
+    navConfig->land_slowdown_minalt = MIN(navConfig->land_slowdown_minalt, navConfig->land_slowdown_maxalt - 100);
 }
 #endif
 
 void resetBarometerConfig(barometerConfig_t *barometerConfig)
 {
-    barometerConfig->baro_sample_count = 7;
-    barometerConfig->baro_noise_lpf = 0.35f;
+    barometerConfig->use_median_filtering = 1;
 }
 
 void resetSensorAlignment(sensorAlignmentConfig_t *sensorAlignmentConfig)
@@ -345,7 +331,7 @@ void resetSerialConfig(serialConfig_t *serialConfig)
     for (index = 0; index < SERIAL_PORT_COUNT; index++) {
         serialConfig->portConfigs[index].identifier = serialPortIdentifiers[index];
         serialConfig->portConfigs[index].msp_baudrateIndex = BAUD_115200;
-        serialConfig->portConfigs[index].gps_baudrateIndex = BAUD_57600;
+        serialConfig->portConfigs[index].gps_baudrateIndex = BAUD_38400;
         serialConfig->portConfigs[index].telemetry_baudrateIndex = BAUD_AUTO;
         serialConfig->portConfigs[index].blackbox_baudrateIndex = BAUD_115200;
     }
@@ -451,10 +437,10 @@ static void resetConf(void)
     // global settings
     masterConfig.current_profile_index = 0;     // default profile
     masterConfig.dcm_kp_acc = 2500;             // 0.25 * 10000
-    masterConfig.dcm_ki_acc = 0;                // 0.00 * 10000
+    masterConfig.dcm_ki_acc = 50;               // 0.005 * 10000
     masterConfig.dcm_kp_mag = 10000;            // 1.00 * 10000
     masterConfig.dcm_ki_mag = 0;                // 0.00 * 10000
-    masterConfig.gyro_lpf = 3;                  // BITS_DLPF_CFG_42HZ, In case of ST gyro, will default to 32Hz instead
+    masterConfig.gyro_lpf = 2;                  // BITS_DLPF_CFG_98HZ, In case of ST gyro, will default to 54Hz instead
 
     resetAccelerometerTrims(&masterConfig.accZero, &masterConfig.accGain);
 
@@ -464,7 +450,6 @@ static void resetConf(void)
     masterConfig.boardAlignment.pitchDeciDegrees = 0;
     masterConfig.boardAlignment.yawDeciDegrees = 0;
     masterConfig.acc_hardware = ACC_DEFAULT;     // default/autodetect
-    masterConfig.max_angle_inclination = 300;    // 30 degrees
     masterConfig.yaw_control_direction = 1;
     masterConfig.gyroConfig.gyroMovementCalibrationThreshold = 32;
 
@@ -545,7 +530,7 @@ static void resetConf(void)
 
     currentProfile->mag_declination = 0;
 
-    resetBarometerConfig(&currentProfile->barometerConfig);
+    resetBarometerConfig(&masterConfig.barometerConfig);
 
     // Radio
     parseRcChannels("AETR1234", &masterConfig.rxConfig);
@@ -602,8 +587,6 @@ static void resetConf(void)
 #if defined(COLIBRI_RACE)
     masterConfig.looptime = 1000;
 
-    currentProfile->pidProfile.pidController = 1;
-
     masterConfig.rxConfig.rcmap[0] = 1;
     masterConfig.rxConfig.rcmap[1] = 2;
     masterConfig.rxConfig.rcmap[2] = 3;
@@ -635,7 +618,6 @@ static void resetConf(void)
     masterConfig.escAndServoConfig.maxthrottle = 2000;
     masterConfig.motor_pwm_rate = 32000;
     masterConfig.looptime = 2000;
-    currentProfile->pidProfile.pidController = 3;
     currentProfile->pidProfile.P8[ROLL] = 36;
     currentProfile->pidProfile.P8[PITCH] = 36;
     masterConfig.failsafeConfig.failsafe_delay = 2;
@@ -769,9 +751,6 @@ void activateConfig(void)
     telemetryUseConfig(&masterConfig.telemetryConfig);
 #endif
 
-    currentProfile->pidProfile.pidController = constrain(currentProfile->pidProfile.pidController, 1, 2); // This should limit to USED values only
-    pidSetController(currentProfile->pidProfile.pidController);
-
     useFailsafeConfig(&masterConfig.failsafeConfig);
 
     setAccelerationZero(&masterConfig.accZero);
@@ -802,11 +781,12 @@ void activateConfig(void)
     navigationUsePIDs(&currentProfile->pidProfile);
     navigationUseRcControlsConfig(&currentProfile->rcControlsConfig);
     navigationUseRxConfig(&masterConfig.rxConfig);
+    navigationUseFlight3DConfig(&masterConfig.flight3DConfig);
     navigationUseEscAndServoConfig(&masterConfig.escAndServoConfig);
 #endif
 
 #ifdef BARO
-    useBarometerConfig(&currentProfile->barometerConfig);
+    useBarometerConfig(&masterConfig.barometerConfig);
 #endif
 }
 
@@ -830,6 +810,11 @@ void validateAndFixConfig(void)
         featureClear(FEATURE_RX_PARALLEL_PWM);
         featureClear(FEATURE_RX_PPM);
     }
+
+#if defined(NAV)
+    // Ensure sane values of navConfig settings
+    validateNavConfig(&masterConfig.navConfig);
+#endif
 
     if (featureConfigured(FEATURE_RX_PARALLEL_PWM)) {
 #if defined(STM32F10X)
@@ -920,6 +905,13 @@ void validateAndFixConfig(void)
     if (!isSerialConfigValid(serialConfig)) {
         resetSerialConfig(serialConfig);
     }
+
+    /*
+     * If provided predefined mixer setup is disabled, fallback to default one
+     */
+     if (!isMixerEnabled(masterConfig.mixerMode)) {
+         masterConfig.mixerMode = DEFAULT_MIXER;
+     }
 }
 
 void applyAndSaveBoardAlignmentDelta(int16_t roll, int16_t pitch)

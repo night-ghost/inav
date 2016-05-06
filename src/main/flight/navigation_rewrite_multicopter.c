@@ -35,6 +35,10 @@
 #include "sensors/acceleration.h"
 #include "sensors/boardalignment.h"
 
+#include "io/escservo.h"
+#include "io/rc_controls.h"
+#include "io/rc_curves.h"
+
 #include "flight/pid.h"
 #include "flight/imu.h"
 #include "flight/navigation_rewrite.h"
@@ -55,16 +59,30 @@ extern int16_t magHold;
  * Altitude controller for multicopter aircraft
  *-----------------------------------------------------------*/
 static int16_t rcCommandAdjustedThrottle;
+static int16_t altHoldThrottleRCZero = 1500;
 static filterStatePt1_t altholdThrottleFilterState;
+static bool prepareForTakeoffOnReset = false;
 
 /* Calculate global altitude setpoint based on surface setpoint */
-static void updateSurfaceTrackingAltitudeSetpoint_MC(void)
+static void updateSurfaceTrackingAltitudeSetpoint(uint32_t deltaMicros)
 {
     /* If we have a surface offset target and a valid surface offset reading - recalculate altitude target */
-    if (posControl.desiredState.surface > 0 && (posControl.actualState.surface > 0 && posControl.flags.hasValidSurfaceSensor)) {
-        float surfaceOffsetError = posControl.desiredState.surface - posControl.actualState.surface;
-        posControl.desiredState.pos.V.Z = posControl.actualState.pos.V.Z + surfaceOffsetError;
+    if (posControl.flags.isTerrainFollowEnabled && posControl.desiredState.surface >= 0) {
+        if (posControl.actualState.surface >= 0 && posControl.flags.hasValidSurfaceSensor) {
+            // We better overshoot a little bit than undershoot
+            float targetAltitudeError = navPidApply2(posControl.desiredState.surface, posControl.actualState.surface, US2S(deltaMicros), &posControl.pids.surface, -5.0f, +35.0f, false);
+            posControl.desiredState.pos.V.Z = posControl.actualState.pos.V.Z + targetAltitudeError;
+        }
+        else {
+            // TODO: We are possible above valid range, we now descend down to attempt to get back within range
+            //updateAltitudeTargetFromClimbRate(-0.10f * posControl.navConfig->emerg_descent_rate, CLIMB_RATE_KEEP_SURFACE_TARGET);
+            updateAltitudeTargetFromClimbRate(-20.0f, CLIMB_RATE_KEEP_SURFACE_TARGET);
+        }
     }
+
+#if defined(NAV_BLACKBOX)
+    navTargetPosition[Z] = constrain(lrintf(posControl.desiredState.pos.V.Z), -32678, 32767);
+#endif
 }
 
 // Position to velocity controller for Z axis
@@ -99,18 +117,29 @@ static void updateAltitudeThrottleController_MC(uint32_t deltaMicros)
 
 bool adjustMulticopterAltitudeFromRCInput(void)
 {
-    int16_t rcThrottleAdjustment = rcCommand[THROTTLE] - posControl.rxConfig->midrc;
+    int16_t rcThrottleAdjustment = rcCommand[THROTTLE] - altHoldThrottleRCZero;
     if (ABS(rcThrottleAdjustment) > posControl.rcControlsConfig->alt_hold_deadband) {
         // set velocity proportional to stick movement
-        float rcClimbRate = rcThrottleAdjustment * posControl.navConfig->max_manual_climb_rate / 500;
-        updateAltitudeTargetFromClimbRate(rcClimbRate);
+        float rcClimbRate;
+
+        // Make sure we can satisfy max_manual_climb_rate in both up and down directions
+        if (rcThrottleAdjustment > 0) {
+            // Scaling from altHoldThrottleRCZero to maxthrottle
+            rcClimbRate = rcThrottleAdjustment * posControl.navConfig->max_manual_climb_rate / (posControl.escAndServoConfig->maxthrottle - altHoldThrottleRCZero);
+        }
+        else {
+            // Scaling from minthrottle to altHoldThrottleRCZero
+            rcClimbRate = rcThrottleAdjustment * posControl.navConfig->max_manual_climb_rate / (altHoldThrottleRCZero - posControl.escAndServoConfig->minthrottle);
+        }
+
+        updateAltitudeTargetFromClimbRate(rcClimbRate, CLIMB_RATE_UPDATE_SURFACE_TARGET);
 
         return true;
     }
     else {
         // Adjusting finished - reset desired position to stay exactly where pilot released the stick
         if (posControl.flags.isAdjustingAltitude) {
-            updateAltitudeTargetFromClimbRate(0);
+            updateAltitudeTargetFromClimbRate(0, CLIMB_RATE_UPDATE_SURFACE_TARGET);
         }
 
         return false;
@@ -119,15 +148,45 @@ bool adjustMulticopterAltitudeFromRCInput(void)
 
 void setupMulticopterAltitudeController(void)
 {
-    // Nothing here
+    throttleStatus_e throttleStatus = calculateThrottleStatus(posControl.rxConfig, posControl.flight3DConfig->deadband3d_throttle);
+
+    if (posControl.navConfig->flags.use_thr_mid_for_althold) {
+        altHoldThrottleRCZero = lookupThrottleRCMid;
+    }
+    else {
+        // If throttle status is THROTTLE_LOW - use Thr Mid anyway
+        if (throttleStatus == THROTTLE_LOW) {
+            altHoldThrottleRCZero = lookupThrottleRCMid;
+        }
+        else {
+            altHoldThrottleRCZero = rcCommand[THROTTLE];
+        }
+    }
+
+    // Make sure we are able to satisfy the deadband
+    altHoldThrottleRCZero = constrain(altHoldThrottleRCZero,
+                                      posControl.escAndServoConfig->minthrottle + posControl.rcControlsConfig->alt_hold_deadband + 10, 
+                                      posControl.escAndServoConfig->maxthrottle - posControl.rcControlsConfig->alt_hold_deadband - 10);
+
+    /* Force AH controller to initialize althold integral for pending takeoff on reset */
+    if (throttleStatus == THROTTLE_LOW) {
+        prepareForTakeoffOnReset = true;
+    }
 }
 
-void resetMulticopterAltitudeController()
+void resetMulticopterAltitudeController(void)
 {
     navPidReset(&posControl.pids.vel[Z]);
+    navPidReset(&posControl.pids.surface);
     filterResetPt1(&altholdThrottleFilterState, 0.0f);
     posControl.desiredState.vel.V.Z = posControl.actualState.vel.V.Z;   // Gradually transition from current climb
     posControl.rcAdjustment[THROTTLE] = 0;
+
+    /* Prevent jump if activated with zero throttle - start with -50% throttle adjustment. That's obviously too much, but it will prevent jumping */
+    if (prepareForTakeoffOnReset) {
+        posControl.pids.vel[Z].integrator = -500.0f;
+        prepareForTakeoffOnReset = false;
+    }
 }
 
 static void applyMulticopterAltitudeController(uint32_t currentTime)
@@ -153,7 +212,7 @@ static void applyMulticopterAltitudeController(uint32_t currentTime)
 
         // Check if last correction was too log ago - ignore this update
         if (deltaMicrosPositionUpdate < HZ2US(MIN_POSITION_UPDATE_RATE_HZ)) {
-            updateSurfaceTrackingAltitudeSetpoint_MC();
+            updateSurfaceTrackingAltitudeSetpoint(deltaMicrosPositionUpdate);
             updateAltitudeVelocityController_MC(deltaMicrosPositionUpdate);
             updateAltitudeThrottleController_MC(deltaMicrosPositionUpdate);
         }
@@ -406,8 +465,8 @@ static void applyMulticopterPositionController(uint32_t currentTime)
     }
 
     if (!bypassPositionController) {
-        rcCommand[PITCH] = leanAngleToRcCommand(posControl.rcAdjustment[PITCH]);
-        rcCommand[ROLL] = leanAngleToRcCommand(posControl.rcAdjustment[ROLL]);
+        rcCommand[PITCH] = pidAngleToRcCommand(posControl.rcAdjustment[PITCH]);
+        rcCommand[ROLL] = pidAngleToRcCommand(posControl.rcAdjustment[ROLL]);
     }
 }
 
@@ -429,15 +488,11 @@ bool isMulticopterLandingDetected(uint32_t * landingTimer)
     // from processRx() and rcCommand at that moment holds rc input, not adjusted values from NAV core)
     bool minimalThrust = rcCommandAdjustedThrottle < posControl.navConfig->mc_min_fly_throttle;
 
-    bool possibleLandingDetected = false;
+    // If we have surface sensor - use it to detect touchdown (surfaceMin is our ground reference. If we are less than 5cm above the ground - we are likely landed)
+    bool surfaceDetected = (posControl.flags.hasValidSurfaceSensor && posControl.actualState.surface >= 0 && posControl.actualState.surfaceMin >= 0)
+                                && (posControl.actualState.surface <= (posControl.actualState.surfaceMin + 5.0f));
 
-    if (posControl.flags.hasValidSurfaceSensor) {
-        /* surfaceMin is our ground reference. If we are less than 5cm above the ground - we are likely landed */
-        possibleLandingDetected = (posControl.actualState.surface <= (posControl.actualState.surfaceMin + 5.0f));
-    }
-    else {
-        possibleLandingDetected = (minimalThrust && !verticalMovement && !horizontalMovement);
-    }
+    bool possibleLandingDetected = (surfaceDetected) || (minimalThrust && !verticalMovement && !horizontalMovement);
 
     if (!possibleLandingDetected) {
         *landingTimer = currentTime;
@@ -480,7 +535,7 @@ static void applyMulticopterEmergencyLandingController(uint32_t currentTime)
 
             // Check if last correction was too log ago - ignore this update
             if (deltaMicrosPositionUpdate < HZ2US(MIN_POSITION_UPDATE_RATE_HZ)) {
-                updateAltitudeTargetFromClimbRate(-1.0f * posControl.navConfig->emerg_descent_rate);
+                updateAltitudeTargetFromClimbRate(-1.0f * posControl.navConfig->emerg_descent_rate, CLIMB_RATE_RESET_SURFACE_TARGET);
                 updateAltitudeVelocityController_MC(deltaMicrosPositionUpdate);
                 updateAltitudeThrottleController_MC(deltaMicrosPositionUpdate);
             }

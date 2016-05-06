@@ -13,9 +13,15 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with Cleanflight.  If not, see <http://www.gnu.org/licenses/>.
- */
-
+ * Author: 4712
+*/
 #pragma once
 
-void init_Gtune(pidProfile_t *pidProfileToTune);
-void calculate_Gtune(uint8_t axis);
+uint8_t Stk_SignOn(void);
+uint8_t Stk_ConnectEx(uint8_32_u *pDeviceInfo);
+uint8_t Stk_ReadEEprom(ioMem_t *pMem);
+uint8_t Stk_WriteEEprom(ioMem_t *pMem);
+uint8_t Stk_ReadFlash(ioMem_t *pMem);
+uint8_t Stk_WriteFlash(ioMem_t *pMem);
+uint8_t Stk_Chip_Erase(void);
+

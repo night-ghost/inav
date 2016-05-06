@@ -77,6 +77,7 @@
 #define LED0
 #define LED1
 #define DISPLAY
+//#define DISPLAY_ARMED_BITMAP
 #define INVERTER
 
 #define USE_USART1
@@ -127,7 +128,6 @@
 #define LED_STRIP_TIMER TIM3
 
 #define BLACKBOX
-#define GTUNE
 #define TELEMETRY
 #define TELEMETRY_FRSKY
 #define TELEMETRY_HOTT
@@ -142,3 +142,5 @@
 // USART2, PA3
 #define BIND_PORT  GPIOA
 #define BIND_PIN   Pin_3
+
+#define DISABLE_UNCOMMON_MIXERS

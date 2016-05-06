@@ -70,7 +70,6 @@
 
 #define INAV_SONAR_W1                       0.8461f // Sonar predictive filter gain for altitude
 #define INAV_SONAR_W2                       6.2034f // Sonar predictive filter gain for velocity
-#define INAV_SONAR_MAX_DISTANCE             70      // Sonar is unreliable above 70cm due to noise from propellers
 
 #define INAV_HISTORY_BUF_SIZE               (INAV_POSITION_PUBLISH_RATE_HZ / 2)     // Enough to hold 0.5 sec historical data
 
@@ -83,7 +82,7 @@ typedef struct {
 
 typedef struct {
     uint32_t    lastUpdateTime; // Last update time (us)
-#if defined(INAV_ENABLE_GPS_GLITCH_DETECTION)
+#if defined(NAV_GPS_GLITCH_DETECTION)
     bool        glitchDetected;
     bool        glitchRecovery;
 #endif
@@ -116,6 +115,12 @@ typedef struct {
 } navPositionEstimatorESTIMATE_t;
 
 typedef struct {
+    uint32_t    baroGroundTimeout;
+    float       baroGroundAlt;
+    bool        isBaroGroundValid;
+} navPositionEstimatorSTATE_t;
+
+typedef struct {
     uint8_t     index;
     t_fp_vector pos[INAV_HISTORY_BUF_SIZE];
     t_fp_vector vel[INAV_HISTORY_BUF_SIZE];
@@ -140,6 +145,9 @@ typedef struct {
 
     // Estimation history
     navPosisitonEstimatorHistory_t  history;
+
+    // Extra state variables
+    navPositionEstimatorSTATE_t state;
 } navigationPosEstimator_s;
 
 static navigationPosEstimator_s posEstimator;
@@ -196,28 +204,44 @@ static uint32_t getGPSDeltaTimeFilter(uint32_t dTus)
     return dTus;                                                 // Filter failed. Set GPS Hz by measurement
 }
 
-#if defined(INAV_ENABLE_GPS_GLITCH_DETECTION)
-static bool detectGPSGlitch(t_fp_vector * newLocalPos, float dT)
+#if defined(NAV_GPS_GLITCH_DETECTION)
+static bool detectGPSGlitch(uint32_t currentTime)
 {
-    t_fp_vector predictedGpsPosition;
-    float gpsDistance;
+    static uint32_t previousTime = 0;
+    static t_fp_vector lastKnownGoodPosition;
+    static t_fp_vector lastKnownGoodVelocity;
 
-    /* We predict new position based on previous GPS velocity and position */
-    predictedGpsPosition.V.X = posEstimator.gps.pos.V.X + posEstimator.gps.vel.V.X * dT;
-    predictedGpsPosition.V.Y = posEstimator.gps.pos.V.Y + posEstimator.gps.vel.V.Y * dT;
+    bool isGlitching = false;
 
-    /* Calculate position error */
-    gpsDistance = sqrtf(sq(predictedGpsPosition.V.X - newLocalPos->V.X) + sq(predictedGpsPosition.V.Y - newLocalPos->V.Y));
+    if (previousTime == 0) {
+        isGlitching = false;
+    }
+    else {
+        t_fp_vector predictedGpsPosition;
+        float gpsDistance;
+        float dT = US2S(currentTime - previousTime);
 
-    /* Condition 1: New pos is within predefined radius of predicted pos */
-    if (gpsDistance > INAV_GPS_GLITCH_RADIUS)
-        return true;
+        /* We predict new position based on previous GPS velocity and position */
+        predictedGpsPosition.V.X = lastKnownGoodPosition.V.X + lastKnownGoodVelocity.V.X * dT;
+        predictedGpsPosition.V.Y = lastKnownGoodPosition.V.Y + lastKnownGoodVelocity.V.Y * dT;
 
-    /* Condition 2: New position must be reachable within INAV_GPS_GLITCH_ACCEL * dt * dt from previous position */
-    if (gpsDistance > (0.5f * INAV_GPS_GLITCH_ACCEL * dT * dT))
-        return true;
+        /* New pos is within predefined radius of predicted pos, radius is expanded exponentially */
+        gpsDistance = sqrtf(sq(predictedGpsPosition.V.X - lastKnownGoodPosition.V.X) + sq(predictedGpsPosition.V.Y - lastKnownGoodPosition.V.Y));
+        if (gpsDistance <= (INAV_GPS_GLITCH_RADIUS + 0.5f * INAV_GPS_GLITCH_ACCEL * dT * dT)) {
+            isGlitching = false;
+        }
+        else {
+            isGlitching = true;
+        }
+    }
+    
+    if (!isGlitching) {
+        previousTime = currentTime;
+        lastKnownGoodPosition = posEstimator.gps.pos;
+        lastKnownGoodVelocity = posEstimator.gps.vel;
+    }
 
-    return false;
+    return isGlitching;
 }
 #endif
 
@@ -250,7 +274,7 @@ void onNewGPSData(void)
             isFirstGPSUpdate = true;
         }
 
-#if defined(INAV_ENABLE_AUTO_MAG_DECLINATION)
+#if defined(NAV_AUTO_MAG_DECLINATION)
         /* Automatic magnetic declination calculation - do this once */
         static bool magDeclinationSet = false;
         if (posControl.navConfig->inav.automatic_mag_declination && !magDeclinationSet) {
@@ -263,28 +287,11 @@ void onNewGPSData(void)
         // FIXME: use HDOP here
         if ((posControl.gpsOrigin.valid) || (gpsSol.numSat >= posControl.navConfig->inav.gps_min_sats)) {
             /* Convert LLH position to local coordinates */
-            t_fp_vector newLocalPos;
-            geoConvertGeodeticToLocal(&posControl.gpsOrigin, &newLLH, &newLocalPos, GEO_ALT_ABSOLUTE);
+            geoConvertGeodeticToLocal(&posControl.gpsOrigin, &newLLH, & posEstimator.gps.pos, GEO_ALT_ABSOLUTE);
 
             /* If not the first update - calculate velocities */
             if (!isFirstGPSUpdate) {
                 float dT = US2S(getGPSDeltaTimeFilter(currentTime - lastGPSNewDataTime));
-
-#if defined(INAV_ENABLE_GPS_GLITCH_DETECTION)
-                /* GPS glitch protection */
-                if (detectGPSGlitch(&newLocalPos, dT)) {
-                    posEstimator.gps.glitchRecovery = false;
-                    posEstimator.gps.glitchDetected = true;
-                }
-                else {
-                    /* Store previous glitch flag in glitchRecovery to indicate a valid reading after a glitch */
-                    posEstimator.gps.glitchRecovery = posEstimator.gps.glitchDetected;
-                    posEstimator.gps.glitchDetected = false;
-                }
-#endif
-
-                /* Even if GPS glitch is detected we continue to update GPS position and velocity to always have a previous reading */
-                posEstimator.gps.pos = newLocalPos;
 
                 /* Use VELNED provided by GPS if available, calculate from coordinates otherwise */
                 float gpsScaleLonDown = constrainf(cos_approx((ABS(gpsSol.llh.lat) / 10000000.0f) * 0.0174532925f), 0.01f, 1.0f);
@@ -303,6 +310,19 @@ void onNewGPSData(void)
                 else {
                     posEstimator.gps.vel.V.Z = (posEstimator.gps.vel.V.Z + (gpsSol.llh.alt - previousAlt) / dT) / 2.0f;
                 }
+
+#if defined(NAV_GPS_GLITCH_DETECTION)
+                /* GPS glitch protection. We have local coordinates and local velocity for current GPS update. Check if they are sane */
+                if (detectGPSGlitch(currentTime)) {
+                    posEstimator.gps.glitchRecovery = false;
+                    posEstimator.gps.glitchDetected = true;
+                }
+                else {
+                    /* Store previous glitch flag in glitchRecovery to indicate a valid reading after a glitch */
+                    posEstimator.gps.glitchRecovery = posEstimator.gps.glitchDetected;
+                    posEstimator.gps.glitchDetected = false;
+                }
+#endif
 
                 /* FIXME: use HDOP/VDOP */
                 posEstimator.gps.eph = INAV_GPS_EPH;
@@ -366,7 +386,7 @@ static void updateSonarTopic(uint32_t currentTime)
             newSonarAlt = sonarCalculateAltitude(newSonarAlt, calculateCosTiltAngle());
 
             /* Apply predictive filter to sonar readings (inspired by PX4Flow) */
-            if (posEstimator.sonar.alt > 0 && posEstimator.sonar.alt <= INAV_SONAR_MAX_DISTANCE) {
+            if (newSonarAlt > 0 && newSonarAlt <= INAV_SONAR_MAX_DISTANCE) {
                 float sonarPredVel, sonarPredAlt;
                 float sonarDt = (currentTime - posEstimator.sonar.lastUpdateTime) * 1e-6;
                 posEstimator.sonar.lastUpdateTime = currentTime;
@@ -464,7 +484,34 @@ static void updateEstimatedTopic(uint32_t currentTime)
     bool isBaroValid = sensors(SENSOR_BARO) && ((currentTime - posEstimator.baro.lastUpdateTime) <= MS2US(INAV_BARO_TIMEOUT_MS));
     bool isSonarValid = sensors(SENSOR_SONAR) && ((currentTime - posEstimator.sonar.lastUpdateTime) <= MS2US(INAV_SONAR_TIMEOUT_MS));
 
-#if defined(INAV_ENABLE_GPS_GLITCH_DETECTION)
+    /* Do some preparations to data */
+    if (isBaroValid) {
+        if (!ARMING_FLAG(ARMED)) {
+            posEstimator.state.baroGroundAlt = posEstimator.est.pos.V.Z;
+            posEstimator.state.isBaroGroundValid = true;
+            posEstimator.state.baroGroundTimeout = currentTime + 250000;   // 0.25 sec
+        }
+        else {
+            if (posEstimator.est.vel.V.Z > 15) {
+                if (currentTime > posEstimator.state.baroGroundTimeout) {
+                    posEstimator.state.isBaroGroundValid = false;
+                }
+            }
+            else {
+                posEstimator.state.baroGroundTimeout = currentTime + 250000;   // 0.25 sec
+            }
+        }
+    }
+    else {
+        posEstimator.state.isBaroGroundValid = false;
+    }
+
+    /* We might be experiencing air cushion effect - use sonar or baro groung altitude to detect it */
+    bool isAirCushionEffectDetected = ARMING_FLAG(ARMED) &&
+                                        ((isSonarValid && posEstimator.sonar.alt < 20.0f && posEstimator.state.isBaroGroundValid) ||
+                                         (isBaroValid && posEstimator.state.isBaroGroundValid && posEstimator.baro.alt < posEstimator.state.baroGroundAlt));
+
+#if defined(NAV_GPS_GLITCH_DETECTION)
     //isGPSValid = isGPSValid && !posEstimator.gps.glitchDetected;
 #endif
 
@@ -497,7 +544,7 @@ static void updateEstimatedTopic(uint32_t currentTime)
         }
 
         /* accelerometer bias correction for baro */
-        if (isBaroValid) {
+        if (isBaroValid && !isAirCushionEffectDetected) {
             accelBiasCorr.V.Z -= (posEstimator.baro.alt - posEstimator.est.pos.V.Z) * sq(posControl.navConfig->inav.w_z_baro_p);
         }
 
@@ -517,8 +564,10 @@ static void updateEstimatedTopic(uint32_t currentTime)
 
 #if defined(BARO)
         if (isBaroValid) {
+            float baroError = (isAirCushionEffectDetected ? posEstimator.state.baroGroundAlt : posEstimator.baro.alt) - posEstimator.est.pos.V.Z;
+
             /* Apply only baro correction, no sonar */
-            inavFilterCorrectPos(Z, dt, posEstimator.baro.alt - posEstimator.est.pos.V.Z, posControl.navConfig->inav.w_z_baro_p);
+            inavFilterCorrectPos(Z, dt, baroError, posControl.navConfig->inav.w_z_baro_p);
 
             /* Adjust EPV */
             posEstimator.est.epv = MIN(posEstimator.est.epv, posEstimator.baro.epv);
@@ -625,10 +674,12 @@ static void publishEstimatedTopic(uint32_t currentTime)
     }
 }
 
+#if defined(NAV_GPS_GLITCH_DETECTION)
 bool isGPSGlitchDetected(void)
 {
     return posEstimator.gps.glitchDetected;
 }
+#endif
 
 /**
  * Initialize position estimator

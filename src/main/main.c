@@ -108,13 +108,13 @@ void serialInit(serialConfig_t *initialSerialConfig, bool softserialEnabled);
 void mspInit(serialConfig_t *serialConfig);
 void cliInit(serialConfig_t *serialConfig);
 void failsafeInit(rxConfig_t *intialRxConfig, uint16_t deadband3d_throttle);
-pwmOutputConfiguration_t *pwmInit(drv_pwm_config_t *init);
+pwmIOConfiguration_t *pwmInit(drv_pwm_config_t *init);
 #ifdef USE_SERVOS
 void mixerInit(mixerMode_e mixerMode, motorMixer_t *customMotorMixers, servoMixer_t *customServoMixers);
 #else
 void mixerInit(mixerMode_e mixerMode, motorMixer_t *customMotorMixers);
 #endif
-void mixerUsePWMOutputConfiguration(pwmOutputConfiguration_t *pwmOutputConfiguration);
+void mixerUsePWMIOConfiguration(pwmIOConfiguration_t *pwmIOConfiguration);
 void rxInit(rxConfig_t *rxConfig, modeActivationCondition_t *modeActivationConditions);
 void gpsPreInit(gpsConfig_t *initialGpsConfig);
 void gpsInit(serialConfig_t *serialConfig, gpsConfig_t *initialGpsConfig);
@@ -284,9 +284,10 @@ void init(void)
 
     pwmRxInit(masterConfig.inputFilteringMode);
 
-    pwmOutputConfiguration_t *pwmOutputConfiguration = pwmInit(&pwm_params);
+    // pwmInit() needs to be called as soon as possible for ESC compatibility reasons
+    pwmIOConfiguration_t *pwmIOConfiguration = pwmInit(&pwm_params);
 
-    mixerUsePWMOutputConfiguration(pwmOutputConfiguration);
+    mixerUsePWMIOConfiguration(pwmIOConfiguration);
 
     if (!feature(FEATURE_ONESHOT125))
         motorControlEnable = true;
@@ -452,6 +453,7 @@ void init(void)
             &currentProfile->pidProfile,
             &currentProfile->rcControlsConfig,
             &masterConfig.rxConfig,
+            &masterConfig.flight3DConfig,
             &masterConfig.escAndServoConfig
         );
 #endif
@@ -520,17 +522,6 @@ void init(void)
 
     if (feature(FEATURE_VBAT | FEATURE_CURRENT_METER))
         batteryInit(&masterConfig.batteryConfig);
-
-#ifdef DISPLAY
-    if (feature(FEATURE_DISPLAY)) {
-#ifdef USE_OLED_GPS_DEBUG_PAGE_ONLY
-        displayShowFixedPage(PAGE_GPS);
-#else
-        displayResetPageCycling();
-        displayEnablePageCycling();
-#endif
-    }
-#endif
 
 #ifdef CJMCU
     LED2_ON;

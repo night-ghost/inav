@@ -243,7 +243,9 @@ COMMON_SRC = build_config.c \
 		   io/rc_controls.c \
 		   io/rc_curves.c \
 		   io/serial.c \
-		   io/serial_1wire.c \
+		   io/serial_4way.c \
+		   io/serial_4way_avrootloader.c \
+		   io/serial_4way_stk500v2.c \
 		   io/serial_cli.c \
 		   io/serial_msp.c \
 		   io/statusindicator.c \
@@ -266,12 +268,11 @@ COMMON_SRC = build_config.c \
 		   $(DEVICE_STDPERIPH_SRC)
 
 HIGHEND_SRC = \
-		   flight/gtune.c \
-		   flight/navigation_rewrite.c \
-		   flight/navigation_rewrite_multicopter.c \
-		   flight/navigation_rewrite_fixedwing.c \
-		   flight/navigation_rewrite_pos_estimator.c \
-		   flight/navigation_rewrite_geo.c \
+           flight/navigation_rewrite.c \
+           flight/navigation_rewrite_multicopter.c \
+           flight/navigation_rewrite_fixedwing.c \
+           flight/navigation_rewrite_pos_estimator.c \
+           flight/navigation_rewrite_geo.c \
 		   flight/gps_conversion.c \
 		   common/colorconversion.c \
 		   io/gps.c \
@@ -440,7 +441,6 @@ CJMCU_SRC = \
 		   drivers/timer.c \
 		   drivers/timer_stm32f10x.c \
 		   hardware_revision.c \
-		   flight/gtune.c \
 		   blackbox/blackbox.c \
 		   blackbox/blackbox_io.c \
 		   $(COMMON_SRC)

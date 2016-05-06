@@ -25,12 +25,15 @@ typedef struct filterStatePt1_s {
 
 /* this holds the data required to update samples thru a filter */
 typedef struct biquad_s {
-    float a0, a1, a2, a3, a4;
-    float x1, x2, y1, y2;
+    float b0, b1, b2, a1, a2;
+    float d1, d2;
 } biquad_t;
 
-float filterApplyPt1(float input, filterStatePt1_t *filter, uint8_t f_cut, float dt);
+float filterApplyPt1(float input, filterStatePt1_t *filter, float f_cut, float dt);
 void filterResetPt1(filterStatePt1_t *filter, float input);
 
 void filterInitBiQuad(uint8_t filterCutFreq, biquad_t *newState, int16_t samplingRate);
 float filterApplyBiQuad(float sample, biquad_t *state);
+
+void filterUpdateFIR(int filterLength, float *shiftBuf, float newSample);
+float filterApplyFIR(int filterLength, const float *shiftBuf, const float *coeffBuf, float commonMultiplier);

@@ -565,7 +565,7 @@ const clivalue_t valueTable[] = {
     { "nav_navr_i",                 VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.I8[PIDNAVR], .config.minmax = { 0,  255 }, 0 },
     { "nav_navr_d",                 VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.D8[PIDNAVR], .config.minmax = { 0,  255 }, 0 },
 
-#if defined(INAV_ENABLE_AUTO_MAG_DECLINATION)
+#if defined(NAV_AUTO_MAG_DECLINATION)
     { "inav_auto_mag_decl",         VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, &masterConfig.navConfig.inav.automatic_mag_declination, .config.lookup = { TABLE_OFF_ON }, 0 },
 #endif
 
@@ -586,19 +586,23 @@ const clivalue_t valueTable[] = {
     { "inav_max_eph_epv",           VAR_FLOAT  | MASTER_VALUE, &masterConfig.navConfig.inav.max_eph_epv, .config.minmax = { 0,  9999 }, 0 },
     { "inav_baro_epv",              VAR_FLOAT  | MASTER_VALUE, &masterConfig.navConfig.inav.baro_epv, .config.minmax = { 0,  9999 }, 0 },
 
+    { "nav_disarm_on_landing",      VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, &masterConfig.navConfig.flags.disarm_on_landing, .config.lookup = { TABLE_OFF_ON }, 0 },
+    { "nav_use_midthr_for_althold", VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, &masterConfig.navConfig.flags.use_thr_mid_for_althold, .config.lookup = { TABLE_OFF_ON }, 0 },
     { "nav_extra_arming_safety",    VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, &masterConfig.navConfig.flags.extra_arming_safety, .config.lookup = { TABLE_OFF_ON }, 0 },
     { "nav_user_control_mode",      VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, &masterConfig.navConfig.flags.user_control_mode, .config.lookup = { TABLE_NAV_USER_CTL_MODE }, 0 },
     { "nav_position_timeout",       VAR_UINT8  | MASTER_VALUE, &masterConfig.navConfig.pos_failure_timeout, .config.minmax = { 0,  10 }, 0 },
-    { "nav_wp_radius",              VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.waypoint_radius, .config.minmax = { 100,  10000 }, 0 },
+    { "nav_wp_radius",              VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.waypoint_radius, .config.minmax = { 10,  10000 }, 0 },
     { "nav_max_speed",              VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.max_speed, .config.minmax = { 10,  2000 }, 0 },
     { "nav_manual_speed",           VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.max_manual_speed, .config.minmax = { 10,  2000 }, 0 },
     { "nav_manual_climb_rate",      VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.max_manual_climb_rate, .config.minmax = { 10,  2000 }, 0 },
     { "nav_landing_speed",          VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.land_descent_rate, .config.minmax = { 100,  2000 }, 0 },
+    { "nav_land_slowdown_minalt",   VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.land_slowdown_minalt, .config.minmax = { 50,  1000 }, 0 },
+    { "nav_land_slowdown_maxalt",   VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.land_slowdown_maxalt, .config.minmax = { 500,  4000 }, 0 },
     { "nav_emerg_landing_speed",    VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.emerg_descent_rate, .config.minmax = { 100,  2000 }, 0 },
     { "nav_min_rth_distance",       VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.min_rth_distance, .config.minmax = { 0,  5000 }, 0 },
     { "nav_rth_tail_first",         VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, &masterConfig.navConfig.flags.rth_tail_first, .config.lookup = { TABLE_OFF_ON }, 0 },
     { "nav_rth_alt_mode",           VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, &masterConfig.navConfig.flags.rth_alt_control_style, .config.lookup = { TABLE_NAV_RTH_ALT_MODE }, 0 },
-    { "nav_rth_altitude",           VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.rth_altitude, .config.minmax = { 100,  10000 }, 0 },
+    { "nav_rth_altitude",           VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.rth_altitude, .config.minmax = { 100,  65000 }, 0 },
 
     { "nav_mc_bank_angle",          VAR_UINT8  | MASTER_VALUE, &masterConfig.navConfig.mc_max_bank_angle, .config.minmax = { 15,  45 }, 0 },
     { "nav_mc_hover_thr",           VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.mc_hover_throttle, .config.minmax = { 1000,  2000 }, 0 },
@@ -611,6 +615,7 @@ const clivalue_t valueTable[] = {
     { "nav_fw_climb_angle",         VAR_UINT8  | MASTER_VALUE, &masterConfig.navConfig.fw_max_climb_angle, .config.minmax = { 5,  45 }, 0 },
     { "nav_fw_dive_angle",          VAR_UINT8  | MASTER_VALUE, &masterConfig.navConfig.fw_max_dive_angle, .config.minmax = { 5,  45 }, 0 },
     { "nav_fw_pitch2thr",           VAR_UINT8  | MASTER_VALUE, &masterConfig.navConfig.fw_pitch_to_throttle, .config.minmax = { 0,  100 }, 0 },
+    { "nav_fw_roll2pitch",          VAR_UINT8  | MASTER_VALUE, &masterConfig.navConfig.fw_roll_to_pitch, .config.minmax = { 0,  200 }, 0 },
     { "nav_fw_loiter_radius",       VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.fw_loiter_radius, .config.minmax = { 0,  10000 }, 0 },
 #endif
 
@@ -644,8 +649,6 @@ const clivalue_t valueTable[] = {
     { "align_board_pitch",          VAR_INT16  | MASTER_VALUE,  &masterConfig.boardAlignment.pitchDeciDegrees, .config.minmax = { -1800,  3600 }, 0 },
     { "align_board_yaw",            VAR_INT16  | MASTER_VALUE,  &masterConfig.boardAlignment.yawDeciDegrees, .config.minmax = { -1800,  3600 }, 0 },
 
-    { "max_angle_inclination",      VAR_UINT16 | MASTER_VALUE,  &masterConfig.max_angle_inclination, .config.minmax = { 100,  900 }, 0 },
-
     { "gyro_lpf",                   VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP,  &masterConfig.gyro_lpf, .config.lookup = { TABLE_GYRO_LPF } },
     { "moron_threshold",            VAR_UINT8  | MASTER_VALUE,  &masterConfig.gyroConfig.gyroMovementCalibrationThreshold, .config.minmax = { 0,  128 }, 0 },
 
@@ -665,6 +668,7 @@ const clivalue_t valueTable[] = {
 
     { "yaw_motor_direction",        VAR_INT8   | MASTER_VALUE, &masterConfig.mixerConfig.yaw_motor_direction, .config.minmax = { -1,  1 }, 0 },
     { "yaw_jump_prevention_limit",  VAR_UINT16 | MASTER_VALUE, &masterConfig.mixerConfig.yaw_jump_prevention_limit, .config.minmax = { YAW_JUMP_PREVENTION_LIMIT_LOW,  YAW_JUMP_PREVENTION_LIMIT_HIGH }, 0 },
+    { "yaw_p_limit",                VAR_UINT16 | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.yaw_p_limit, .config.minmax = { YAW_P_LIMIT_MIN,  YAW_P_LIMIT_MAX }, 0 },
 
 #ifdef USE_SERVOS
     { "tri_unarmed_servo",          VAR_INT8   | MASTER_VALUE | MODE_LOOKUP, &masterConfig.mixerConfig.tri_unarmed_servo, .config.lookup = { TABLE_OFF_ON }, 0 },
@@ -700,14 +704,11 @@ const clivalue_t valueTable[] = {
 
     { "acc_hardware",               VAR_UINT8  | MASTER_VALUE,  &masterConfig.acc_hardware, .config.minmax = { 0,  ACC_MAX }, 0 },
 
-    { "baro_tab_size",              VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].barometerConfig.baro_sample_count, .config.minmax = { 0,  BARO_SAMPLE_COUNT_MAX }, 0 },
-    { "baro_noise_lpf",             VAR_FLOAT  | PROFILE_VALUE, &masterConfig.profile[0].barometerConfig.baro_noise_lpf, .config.minmax = { 0,  1 }, 0 },
+    { "baro_use_median_filter",     VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, &masterConfig.barometerConfig.use_median_filtering, .config.lookup = { TABLE_OFF_ON }, 0 },
     { "baro_hardware",              VAR_UINT8  | MASTER_VALUE,  &masterConfig.baro_hardware, .config.minmax = { 0,  BARO_MAX }, 0 },
 
     { "mag_hardware",               VAR_UINT8  | MASTER_VALUE,  &masterConfig.mag_hardware, .config.minmax = { 0,  MAG_MAX }, 0 },
     { "mag_declination",            VAR_INT16  | PROFILE_VALUE, &masterConfig.profile[0].mag_declination, .config.minmax = { -18000,  18000 }, 0 },
-
-    { "pid_controller",             VAR_UINT8  | PROFILE_VALUE | MODE_LOOKUP, &masterConfig.profile[0].pidProfile.pidController, .config.lookup = { TABLE_PID_CONTROLLER }, 0 },
 
     { "p_pitch",                    VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.P8[PITCH], .config.minmax = { 0,  200 }, 0 },
     { "i_pitch",                    VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.I8[PITCH], .config.minmax = { 0,  200 }, 0 },
@@ -719,40 +720,16 @@ const clivalue_t valueTable[] = {
     { "i_yaw",                      VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.I8[YAW], .config.minmax = { 0,  200 }, 0 },
     { "d_yaw",                      VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.D8[YAW], .config.minmax = { 0,  200 }, 0 },
 
-    { "p_pitchf",                   VAR_FLOAT  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.P_f[PITCH], .config.minmax = { 0,  100 }, 0 },
-    { "i_pitchf",                   VAR_FLOAT  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.I_f[PITCH], .config.minmax = { 0,  100 }, 0 },
-    { "d_pitchf",                   VAR_FLOAT  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.D_f[PITCH], .config.minmax = { 0,  100 }, 0 },
-    { "p_rollf",                    VAR_FLOAT  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.P_f[ROLL], .config.minmax = { 0,  100 }, 0 },
-    { "i_rollf",                    VAR_FLOAT  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.I_f[ROLL], .config.minmax = { 0,  100 }, 0 },
-    { "d_rollf",                    VAR_FLOAT  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.D_f[ROLL], .config.minmax = { 0,  100 }, 0 },
-    { "p_yawf",                     VAR_FLOAT  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.P_f[YAW], .config.minmax = { 0,  100 }, 0 },
-    { "i_yawf",                     VAR_FLOAT  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.I_f[YAW], .config.minmax = { 0,  100 }, 0 },
-    { "d_yawf",                     VAR_FLOAT  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.D_f[YAW], .config.minmax = { 0,  100 }, 0 },
+    { "p_level",                    VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.P8[PIDLEVEL], .config.minmax = { 0,  255 }, 0 },
+    { "i_level",                    VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.I8[PIDLEVEL], .config.minmax = { 0,  100 }, 0 },
+    { "d_level",                    VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.D8[PIDLEVEL], .config.minmax = { 0,  100 }, 0 },
 
-    { "level_horizon",              VAR_FLOAT  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.H_level, .config.minmax = { 0,  10 }, 0 },
-    { "level_angle",                VAR_FLOAT  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.A_level, .config.minmax = { 0,  10 }, 0 },
-    { "sensitivity_horizon",        VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.H_sensitivity, .config.minmax = { 0,  250 }, 0 },
+    { "max_angle_inclination_rll",  VAR_INT16  | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.max_angle_inclination[FD_ROLL], .config.minmax = { 100,  900 }, 0 },
+    { "max_angle_inclination_pit",  VAR_INT16  | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.max_angle_inclination[FD_PITCH], .config.minmax = { 100,  900 }, 0 },
 
-    { "p_level",                    VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.P8[PIDLEVEL], .config.minmax = { 0,  200 }, 0 },
-    { "i_level",                    VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.I8[PIDLEVEL], .config.minmax = { 0,  200 }, 0 },
-    { "d_level",                    VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.D8[PIDLEVEL], .config.minmax = { 0,  200 }, 0 },
-
-    { "yaw_p_limit",                VAR_UINT16 | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.yaw_p_limit, .config.minmax = { YAW_P_LIMIT_MIN, YAW_P_LIMIT_MAX } },
 	{ "gyro_soft_lpf_hz",           VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.gyro_soft_lpf_hz, .config.minmax = {0, 200 } },
     { "acc_soft_lpf_hz",            VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.acc_soft_lpf_hz, .config.minmax = {0, 200 } },
     { "dterm_lpf_hz",               VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.dterm_lpf_hz, .config.minmax = {0, 200 } },
-
-#ifdef GTUNE
-    { "gtune_loP_rll",              VAR_UINT8  | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.gtune_lolimP[FD_ROLL], .config.minmax = { 10,  200 }, 0 },
-    { "gtune_loP_ptch",             VAR_UINT8  | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.gtune_lolimP[FD_PITCH], .config.minmax = { 10,  200 }, 0 },
-    { "gtune_loP_yw",               VAR_UINT8  | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.gtune_lolimP[FD_YAW], .config.minmax = { 10,  200 }, 0 },
-    { "gtune_hiP_rll",              VAR_UINT8  | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.gtune_hilimP[FD_ROLL], .config.minmax = { 0,  200 }, 0 },
-    { "gtune_hiP_ptch",             VAR_UINT8  | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.gtune_hilimP[FD_PITCH], .config.minmax = { 0,  200 }, 0 },
-    { "gtune_hiP_yw",               VAR_UINT8  | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.gtune_hilimP[FD_YAW], .config.minmax = { 0,  200 }, 0 },
-    { "gtune_pwr",                  VAR_UINT8  | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.gtune_pwr, .config.minmax = { 0,  10 }, 0 },
-    { "gtune_settle_time",          VAR_UINT16 | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.gtune_settle_time, .config.minmax = { 200,  1000 }, 0 },
-    { "gtune_average_cycles",       VAR_UINT8  | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.gtune_average_cycles, .config.minmax = { 8,  128 }, 0 },
-#endif
 
 #ifdef BLACKBOX
     { "blackbox_rate_num",          VAR_UINT8  | MASTER_VALUE,  &masterConfig.blackbox_rate_num, .config.minmax = { 1,  32 }, 0 },
@@ -1764,7 +1741,7 @@ static void cliDump(char *cmdline)
             if (mask & (1 << i))
                 cliPrintf("beeper -%s\r\n", beeperNameForTableIndex(i));
             else
-                cliPrintf("beeper  %s\r\n", beeperNameForTableIndex(i));
+                cliPrintf("beeper %s\r\n", beeperNameForTableIndex(i));
         }
 #endif
 
@@ -2555,7 +2532,8 @@ static void cliVersion(char *cmdline)
 {
     UNUSED(cmdline);
 
-    cliPrintf("# iNav/%s %s %s / %s (%s)",
+    cliPrintf("# %s/%s %s %s / %s (%s)",
+        FC_NAME,
         targetName,
         FC_VERSION_STRING,
         buildDate,

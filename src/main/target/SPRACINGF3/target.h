@@ -164,6 +164,7 @@
 #define ENABLE_BLACKBOX_LOGGING_ON_SPIFLASH_BY_DEFAULT
 
 #define DISPLAY
+#define DISPLAY_ARMED_BITMAP
 
 #define GPS
 #define GPS_PROTO_NMEA
@@ -172,8 +173,9 @@
 #define GPS_PROTO_NAZA
 
 #define NAV
+#define NAV_AUTO_MAG_DECLINATION
+#define NAV_GPS_GLITCH_DETECTION
 
-#define GTUNE
 #define SERIAL_RX
 #define TELEMETRY
 #define TELEMETRY_FRSKY
@@ -189,9 +191,4 @@
 #define BIND_PORT  GPIOB
 #define BIND_PIN   Pin_11
 
-#define USE_SERIAL_1WIRE
-
-#define S1W_TX_GPIO         GPIOA
-#define S1W_TX_PIN          GPIO_Pin_9
-#define S1W_RX_GPIO         GPIOA
-#define S1W_RX_PIN          GPIO_Pin_10
+#define USE_SERIAL_4WAY_BLHELI_INTERFACE

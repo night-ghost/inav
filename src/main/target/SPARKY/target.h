@@ -112,14 +112,18 @@
 #define BLACKBOX
 
 #define NAV
+//#define NAV_AUTO_MAG_DECLINATION
+#define NAV_GPS_GLITCH_DETECTION
+
 #define GPS
 #define GPS_PROTO_NMEA
 #define GPS_PROTO_UBLOX
 #define GPS_PROTO_I2C_NAV
 #define GPS_PROTO_NAZA
 
-#define GTUNE
 #define DISPLAY
+#define DISPLAY_ARMED_BITMAP
+
 #define SERIAL_RX
 #define TELEMETRY
 #define TELEMETRY_FRSKY
@@ -164,12 +168,7 @@
 #define WS2811_IRQ                      DMA1_Channel7_IRQn
 #endif
 
-#define USE_SERIAL_1WIRE
-
-#define S1W_TX_GPIO         GPIOB
-#define S1W_TX_PIN          GPIO_Pin_6
-#define S1W_RX_GPIO         GPIOB
-#define S1W_RX_PIN          GPIO_Pin_7
+#define USE_SERIAL_4WAY_BLHELI_INTERFACE
 
 #define SPEKTRUM_BIND
 // USART2, PA3

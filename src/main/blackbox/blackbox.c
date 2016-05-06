@@ -166,6 +166,9 @@ static const blackboxDeltaFieldDefinition_t blackboxMainFields[] = {
     {"loopIteration",-1, UNSIGNED, .Ipredict = PREDICT(0),     .Iencode = ENCODING(UNSIGNED_VB), .Ppredict = PREDICT(INC),           .Pencode = FLIGHT_LOG_FIELD_ENCODING_NULL, CONDITION(ALWAYS)},
     /* Time advances pretty steadily so the P-frame prediction is a straight line */
     {"time",       -1, UNSIGNED, .Ipredict = PREDICT(0),       .Iencode = ENCODING(UNSIGNED_VB), .Ppredict = PREDICT(STRAIGHT_LINE), .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
+    {"axisRate",    0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
+    {"axisRate",    1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
+    {"axisRate",    2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
     {"axisP",       0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
     {"axisP",       1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
     {"axisP",       2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
@@ -238,6 +241,8 @@ static const blackboxDeltaFieldDefinition_t blackboxMainFields[] = {
     {"navTgtPos",  0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
     {"navTgtPos",  1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
     {"navTgtPos",  2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
+    {"navSurf",    0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
+    {"navTgtSurf", 0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
     {"navDebug",   0, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
     {"navDebug",   1, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
     {"navDebug",   2, SIGNED,   .Ipredict = PREDICT(0),       .Iencode = ENCODING(SIGNED_VB),   .Ppredict = PREDICT(PREVIOUS),      .Pencode = ENCODING(SIGNED_VB), CONDITION(ALWAYS)},
@@ -249,12 +254,14 @@ static const blackboxDeltaFieldDefinition_t blackboxMainFields[] = {
 // GPS position/vel frame
 static const blackboxConditionalFieldDefinition_t blackboxGpsGFields[] = {
     {"time",              -1, UNSIGNED, PREDICT(LAST_MAIN_FRAME_TIME), ENCODING(UNSIGNED_VB), CONDITION(NOT_LOGGING_EVERY_FRAME)},
+    {"GPS_fixType",       -1, UNSIGNED, PREDICT(0),          ENCODING(UNSIGNED_VB), CONDITION(ALWAYS)},
     {"GPS_numSat",        -1, UNSIGNED, PREDICT(0),          ENCODING(UNSIGNED_VB), CONDITION(ALWAYS)},
     {"GPS_coord",          0, SIGNED,   PREDICT(HOME_COORD), ENCODING(SIGNED_VB),   CONDITION(ALWAYS)},
     {"GPS_coord",          1, SIGNED,   PREDICT(HOME_COORD), ENCODING(SIGNED_VB),   CONDITION(ALWAYS)},
     {"GPS_altitude",      -1, UNSIGNED, PREDICT(0),          ENCODING(UNSIGNED_VB), CONDITION(ALWAYS)},
     {"GPS_speed",         -1, UNSIGNED, PREDICT(0),          ENCODING(UNSIGNED_VB), CONDITION(ALWAYS)},
     {"GPS_ground_course", -1, UNSIGNED, PREDICT(0),          ENCODING(UNSIGNED_VB), CONDITION(ALWAYS)},
+    {"GPS_hdop",          -1, UNSIGNED, PREDICT(0),          ENCODING(UNSIGNED_VB), CONDITION(ALWAYS)},
     {"GPS_eph",           -1, UNSIGNED, PREDICT(0),          ENCODING(UNSIGNED_VB), CONDITION(ALWAYS)},
     {"GPS_epv",           -1, UNSIGNED, PREDICT(0),          ENCODING(UNSIGNED_VB), CONDITION(ALWAYS)}
 };
@@ -296,7 +303,7 @@ typedef enum BlackboxState {
 typedef struct blackboxMainState_s {
     uint32_t time;
 
-    int32_t axisPID_P[XYZ_AXIS_COUNT], axisPID_I[XYZ_AXIS_COUNT], axisPID_D[XYZ_AXIS_COUNT];
+    int32_t axisPID_P[XYZ_AXIS_COUNT], axisPID_I[XYZ_AXIS_COUNT], axisPID_D[XYZ_AXIS_COUNT], axisPID_Setpoint[XYZ_AXIS_COUNT];
 
     int16_t rcCommand[4];
     int16_t gyroADC[XYZ_AXIS_COUNT];
@@ -327,6 +334,8 @@ typedef struct blackboxMainState_s {
     int16_t navTargetPos[XYZ_AXIS_COUNT];
     int16_t navHeading;
     int16_t navTargetHeading;
+    int16_t navSurface;
+    int16_t navTargetSurface;
     int16_t navDebug[4];
 #endif
 } blackboxMainState_t;
@@ -423,11 +432,7 @@ static bool testBlackboxConditionUncached(FlightLogFieldCondition condition)
         case FLIGHT_LOG_FIELD_CONDITION_NONZERO_PID_D_0:
         case FLIGHT_LOG_FIELD_CONDITION_NONZERO_PID_D_1:
         case FLIGHT_LOG_FIELD_CONDITION_NONZERO_PID_D_2:
-            if (IS_PID_CONTROLLER_FP_BASED(currentProfile->pidProfile.pidController)) {
-                return currentProfile->pidProfile.D_f[condition - FLIGHT_LOG_FIELD_CONDITION_NONZERO_PID_D_0] != 0;
-            } else {
-                return currentProfile->pidProfile.D8[condition - FLIGHT_LOG_FIELD_CONDITION_NONZERO_PID_D_0] != 0;
-            }
+            return currentProfile->pidProfile.D8[condition - FLIGHT_LOG_FIELD_CONDITION_NONZERO_PID_D_0] != 0;
 
         case FLIGHT_LOG_FIELD_CONDITION_MAG:
 #ifdef MAG
@@ -529,6 +534,7 @@ static void writeIntraframe(void)
     blackboxWriteUnsignedVB(blackboxIteration);
     blackboxWriteUnsignedVB(blackboxCurrent->time);
 
+    blackboxWriteSignedVBArray(blackboxCurrent->axisPID_Setpoint, XYZ_AXIS_COUNT);
     blackboxWriteSignedVBArray(blackboxCurrent->axisPID_P, XYZ_AXIS_COUNT);
     blackboxWriteSignedVBArray(blackboxCurrent->axisPID_I, XYZ_AXIS_COUNT);
 
@@ -623,6 +629,9 @@ static void writeIntraframe(void)
         blackboxWriteSignedVB(blackboxCurrent->navTargetPos[x]);
     }
 
+    blackboxWriteSignedVB(blackboxCurrent->navSurface);
+    blackboxWriteSignedVB(blackboxCurrent->navTargetSurface);
+
     for (x = 0; x < 4; x++) {
         blackboxWriteSignedVB(blackboxCurrent->navDebug[x]);
     }
@@ -669,6 +678,9 @@ static void writeInterframe(void)
      * looptime spacing), use second-order differences.
      */
     blackboxWriteSignedVB((int32_t) (blackboxHistory[0]->time - 2 * blackboxHistory[1]->time + blackboxHistory[2]->time));
+
+    arraySubInt32(deltas, blackboxCurrent->axisPID_Setpoint, blackboxLast->axisPID_Setpoint, XYZ_AXIS_COUNT);
+    blackboxWriteSignedVBArray(deltas, XYZ_AXIS_COUNT);
 
     arraySubInt32(deltas, blackboxCurrent->axisPID_P, blackboxLast->axisPID_P, XYZ_AXIS_COUNT);
     blackboxWriteSignedVBArray(deltas, XYZ_AXIS_COUNT);
@@ -767,6 +779,9 @@ static void writeInterframe(void)
     for (x = 0; x < XYZ_AXIS_COUNT; x++) {
         blackboxWriteSignedVB(blackboxHistory[0]->navTargetPos[x] - (blackboxHistory[1]->navTargetPos[x] + blackboxHistory[2]->navTargetPos[x]) / 2);
     }
+
+    blackboxWriteSignedVB(blackboxCurrent->navSurface - blackboxLast->navSurface);
+    blackboxWriteSignedVB(blackboxCurrent->navTargetSurface - blackboxLast->navTargetSurface);
 
     for (x = 0; x < 4; x++) {
         blackboxWriteSignedVB(blackboxCurrent->navDebug[x] - blackboxLast->navDebug[x]);
@@ -970,12 +985,14 @@ static void writeGPSFrame()
         blackboxWriteUnsignedVB(currentTime - blackboxHistory[1]->time);
     }
 
+    blackboxWriteUnsignedVB(gpsSol.fixType);
     blackboxWriteUnsignedVB(gpsSol.numSat);
     blackboxWriteSignedVB(gpsSol.llh.lat - gpsHistory.GPS_home[0]);
     blackboxWriteSignedVB(gpsSol.llh.lon - gpsHistory.GPS_home[1]);
     blackboxWriteUnsignedVB(gpsSol.llh.alt / 100); // meters
     blackboxWriteUnsignedVB(gpsSol.groundSpeed);
     blackboxWriteUnsignedVB(gpsSol.groundCourse);
+    blackboxWriteUnsignedVB(gpsSol.hdop);
     blackboxWriteUnsignedVB(gpsSol.eph);
     blackboxWriteUnsignedVB(gpsSol.epv);
 
@@ -995,6 +1012,9 @@ static void loadMainState(void)
 
     blackboxCurrent->time = currentTime;
 
+    for (i = 0; i < XYZ_AXIS_COUNT; i++) {
+        blackboxCurrent->axisPID_Setpoint[i] = axisPID_Setpoint[i];
+    }
     for (i = 0; i < XYZ_AXIS_COUNT; i++) {
         blackboxCurrent->axisPID_P[i] = axisPID_P[i];
     }
@@ -1059,6 +1079,8 @@ static void loadMainState(void)
         blackboxCurrent->navTargetVel[i] = navDesiredVelocity[i];
         blackboxCurrent->navTargetPos[i] = navTargetPosition[i];
     }
+    blackboxCurrent->navSurface = navActualSurface;
+    blackboxCurrent->navTargetSurface = navTargetSurface;
     for (i = 0; i < 4; i++) {
         blackboxCurrent->navDebug[i] = navDebug[i];
     }
@@ -1275,11 +1297,6 @@ void blackboxLogEvent(FlightLogEvent event, flightLogEventData_t *data)
                 blackboxWrite(data->inflightAdjustment.adjustmentFunction);
                 blackboxWriteSignedVB(data->inflightAdjustment.newValue);
             }
-        case FLIGHT_LOG_EVENT_GTUNE_RESULT:
-            blackboxWrite(data->gtuneCycleResult.gtuneAxis);
-            blackboxWriteSignedVB(data->gtuneCycleResult.gtuneGyroAVG);
-            blackboxWriteS16(data->gtuneCycleResult.gtuneNewP);
-        break;
         case FLIGHT_LOG_EVENT_LOGGING_RESUME:
             blackboxWriteUnsignedVB(data->loggingResume.logIteration);
             blackboxWriteUnsignedVB(data->loggingResume.currentTime);

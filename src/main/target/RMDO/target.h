@@ -160,19 +160,24 @@
 #define GPS_PROTO_NMEA
 #define GPS_PROTO_UBLOX
 #define GPS_PROTO_I2C_NAV
-#define GPS_PROTO_NAZA
+//#define GPS_PROTO_NAZA
 
 #define NAV
+//#define NAV_AUTO_MAG_DECLINATION
+#define NAV_GPS_GLITCH_DETECTION
 
 #define BLACKBOX
 #define TELEMETRY
 #define TELEMETRY_FRSKY
-#define TELEMETRY_HOTT
-#define TELEMETRY_SMARTPORT
+//#define TELEMETRY_HOTT
+//#define TELEMETRY_SMARTPORT
 #define TELEMETRY_LTM
 
 #define SERIAL_RX
+
 #define DISPLAY
+//#define DISPLAY_ARMED_BITMAP
+
 #define USE_SERVOS
 #define USE_CLI
 
@@ -181,9 +186,4 @@
 #define BIND_PORT  GPIOB
 #define BIND_PIN   Pin_11
 
-#define USE_SERIAL_1WIRE
-
-#define S1W_TX_GPIO         GPIOA
-#define S1W_TX_PIN          GPIO_Pin_9
-#define S1W_RX_GPIO         GPIOA
-#define S1W_RX_PIN          GPIO_Pin_10
+#define USE_SERIAL_4WAY_BLHELI_INTERFACE

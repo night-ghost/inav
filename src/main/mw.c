@@ -76,7 +76,6 @@
 #include "flight/imu.h"
 #include "flight/hil.h"
 #include "flight/failsafe.h"
-#include "flight/gtune.h"
 #include "flight/navigation_rewrite.h"
 
 #include "config/runtime_config.h"
@@ -111,38 +110,8 @@ int16_t telemTemperature1;      // gyro sensor temperature
 static uint32_t disarmAt;     // Time of automatic disarm when "Don't spin the motors when armed" is enabled and auto_disarm_delay is nonzero
 
 extern uint32_t currentTime;
-extern uint8_t dynP8[3], dynI8[3], dynD8[3], PIDweight[3];
 
 static bool isRXDataNew;
-
-typedef void (*pidControllerFuncPtr)(pidProfile_t *pidProfile, controlRateConfig_t *controlRateConfig,
-        uint16_t max_angle_inclination, rxConfig_t *rxConfig);            // pid controller function prototype
-
-extern pidControllerFuncPtr pid_controller;
-
-#ifdef GTUNE
-
-void updateGtuneState(void)
-{
-    static bool GTuneWasUsed = false;
-
-    if (IS_RC_MODE_ACTIVE(BOXGTUNE)) {
-        if (!FLIGHT_MODE(GTUNE_MODE) && ARMING_FLAG(ARMED)) {
-            ENABLE_FLIGHT_MODE(GTUNE_MODE);
-            init_Gtune(&currentProfile->pidProfile);
-            GTuneWasUsed = true;
-        }
-        if (!FLIGHT_MODE(GTUNE_MODE) && !ARMING_FLAG(ARMED) && GTuneWasUsed) {
-            saveConfigAndNotify();
-            GTuneWasUsed = false;
-        }
-    } else {
-        if (FLIGHT_MODE(GTUNE_MODE) && ARMING_FLAG(ARMED)) {
-            DISABLE_FLIGHT_MODE(GTUNE_MODE);
-        }
-    }
-}
-#endif
 
 bool isCalibrating()
 {
@@ -159,19 +128,7 @@ bool isCalibrating()
 
 void annexCode(void)
 {
-    int32_t tmp, tmp2;
-    int32_t axis, prop1 = 0, prop2;
-
-    // PITCH & ROLL only dynamic PID adjustment,  depending on throttle value
-    if (rcData[THROTTLE] < currentControlRateProfile->tpa_breakpoint) {
-        prop2 = 100;
-    } else {
-        if (rcData[THROTTLE] < 2000) {
-            prop2 = 100 - (uint16_t)currentControlRateProfile->dynThrPID * (rcData[THROTTLE] - currentControlRateProfile->tpa_breakpoint) / (2000 - currentControlRateProfile->tpa_breakpoint);
-        } else {
-            prop2 = 100 - currentControlRateProfile->dynThrPID;
-        }
-    }
+    int32_t tmp, tmp2, axis;
 
     for (axis = 0; axis < 3; axis++) {
         tmp = MIN(ABS(rcData[axis] - masterConfig.rxConfig.midrc), 500);
@@ -186,8 +143,6 @@ void annexCode(void)
 
             tmp2 = tmp / 100;
             rcCommand[axis] = lookupPitchRollRC[tmp2] + (tmp - tmp2 * 100) * (lookupPitchRollRC[tmp2 + 1] - lookupPitchRollRC[tmp2]) / 100;
-            prop1 = 100 - (uint16_t)currentControlRateProfile->rates[axis] * tmp / 500;
-            prop1 = (uint16_t)prop1 * prop2 / 100;
         } else if (axis == YAW) {
             if (currentProfile->rcControlsConfig.yaw_deadband) {
                 if (tmp > currentProfile->rcControlsConfig.yaw_deadband) {
@@ -198,19 +153,6 @@ void annexCode(void)
             }
             tmp2 = tmp / 100;
             rcCommand[axis] = (lookupYawRC[tmp2] + (tmp - tmp2 * 100) * (lookupYawRC[tmp2 + 1] - lookupYawRC[tmp2]) / 100) * -masterConfig.yaw_control_direction;
-            prop1 = 100 - (uint16_t)currentControlRateProfile->rates[axis] * ABS(tmp) / 500;
-        }
-        // FIXME axis indexes into pids.  use something like lookupPidIndex(rc_alias_e alias) to reduce coupling.
-        dynP8[axis] = (uint16_t)currentProfile->pidProfile.P8[axis] * prop1 / 100;
-        dynI8[axis] = (uint16_t)currentProfile->pidProfile.I8[axis] * prop1 / 100;
-        dynD8[axis] = (uint16_t)currentProfile->pidProfile.D8[axis] * prop1 / 100;
-
-        // non coupled PID reduction scaler used in PID controller 1 and PID controller 2. YAW TPA disabled. 100 means 100% of the pids
-        if (axis == YAW) {
-            PIDweight[axis] = 100;
-        }
-        else {
-            PIDweight[axis] = prop2;
         }
 
         if (rcData[axis] < masterConfig.rxConfig.midrc)
@@ -303,6 +245,7 @@ void mwArm(void)
         }
         if (!ARMING_FLAG(PREVENT_ARMING)) {
             ENABLE_ARMING_FLAG(ARMED);
+            ENABLE_ARMING_FLAG(WAS_EVER_ARMED);
             headFreeModeHold = DECIDEGREES_TO_DEGREES(attitude.values.yaw);
 
 #ifdef BLACKBOX
@@ -317,8 +260,8 @@ void mwArm(void)
             disarmAt = millis() + masterConfig.auto_disarm_delay * 1000;   // start disarm timeout, will be extended when throttle is nonzero
 
             //beep to indicate arming
-#ifdef GPS
-            if (feature(FEATURE_GPS) && STATE(GPS_FIX) && gpsSol.numSat >= 5)
+#ifdef NAV
+            if (navigationPositionEstimateIsHealthy())
                 beeper(BEEPER_ARMING_GPS_FIX);
             else
                 beeper(BEEPER_ARMING);
@@ -399,10 +342,6 @@ void processRx(void)
     }
 
     throttleStatus_e throttleStatus = calculateThrottleStatus(&masterConfig.rxConfig, masterConfig.flight3DConfig.deadband3d_throttle);
-
-    if (SHOULD_RESET_ERRORS) {
-        pidResetErrorGyro();
-    }
 
     // When armed and motors aren't spinning, do beeps and then disarm
     // board after delay so users without buzzer won't lose fingers.
@@ -487,6 +426,15 @@ void processRx(void)
         LED1_OFF;
     }
 
+    /* Heading lock mode */
+    if (IS_RC_MODE_ACTIVE(BOXHEADINGLOCK)) {
+        if (!FLIGHT_MODE(HEADING_LOCK)) {
+            ENABLE_FLIGHT_MODE(HEADING_LOCK);
+        }
+    } else {
+        DISABLE_FLIGHT_MODE(HEADING_LOCK);
+    }
+
 #if defined(MAG)
     if (sensors(SENSOR_ACC) || sensors(SENSOR_MAG)) {
         if (IS_RC_MODE_ACTIVE(BOXMAG)) {
@@ -517,6 +465,39 @@ void processRx(void)
         DISABLE_FLIGHT_MODE(PASSTHRU_MODE);
     }
 
+    /* In airmode Iterm should be prevented to grow when Low thottle and Roll + Pitch Centered.
+       This is needed to prevent Iterm winding on the ground, but keep full stabilisation on 0 throttle while in air
+       Low Throttle + roll and Pitch centered is assuming the copter is on the ground. Done to prevent complex air/ground detections */
+    if (FLIGHT_MODE(PASSTHRU_MODE) || !ARMING_FLAG(ARMED)) {
+        /* In PASSTHRU mode anti-windup must be explicitly enabled to prevent I-term wind-up (PID output is not used in PASSTHRU) */
+        //ENABLE_STATE(ANTI_WINDUP);
+        pidResetErrorAccumulators();
+    }
+    else {
+        if (throttleStatus == THROTTLE_LOW) {
+            if (IS_RC_MODE_ACTIVE(BOXAIRMODE) && !failsafeIsActive() && ARMING_FLAG(ARMED)) {
+                rollPitchStatus_e rollPitchStatus =  calculateRollPitchCenterStatus(&masterConfig.rxConfig);
+
+                // ANTI_WINDUP at centred stick with MOTOR_STOP is needed on MRs and not needed on FWs
+                if (rollPitchStatus == CENTERED || (feature(FEATURE_MOTOR_STOP) && !STATE(FIXED_WING))) {
+                    ENABLE_STATE(ANTI_WINDUP);
+                }
+                else {
+                    DISABLE_STATE(ANTI_WINDUP);
+                }
+            }
+            else {
+                pidResetErrorAccumulators();
+            }
+
+            ENABLE_STATE(PID_ATTENUATE);
+        }
+        else {
+            DISABLE_STATE(PID_ATTENUATE);
+            DISABLE_STATE(ANTI_WINDUP);
+        }
+    }
+
     if (masterConfig.mixerMode == MIXER_FLYING_WING || masterConfig.mixerMode == MIXER_AIRPLANE || masterConfig.mixerMode == MIXER_CUSTOM_AIRPLANE) {
         DISABLE_FLIGHT_MODE(HEADFREE_MODE);
     }
@@ -530,7 +511,7 @@ void processRx(void)
         } else {
             // the telemetry state must be checked immediately so that shared serial ports are released.
             telemetryCheckState();
-            mspAllocateSerialPorts(&masterConfig.serialConfig);
+            mspAllocateSerialPorts();
         }
     }
 #endif
@@ -603,10 +584,6 @@ void taskMainPidLoop(void)
 
     isRXDataNew = false;
 
-#ifdef GTUNE
-    updateGtuneState();
-#endif
-
 #if defined(NAV)
     updatePositionEstimator();
     applyWaypointNavigationAndAltitudeHold();
@@ -654,13 +631,7 @@ void taskMainPidLoop(void)
         }
     }
 
-    // PID - note this is function pointer set by setPIDController()
-    pid_controller(
-        &currentProfile->pidProfile,
-        currentControlRateProfile,
-        masterConfig.max_angle_inclination,
-        &masterConfig.rxConfig
-    );
+    pidController(&currentProfile->pidProfile, currentControlRateProfile, &masterConfig.rxConfig);
 
 #ifdef HIL
     if (hilActive) {
@@ -689,7 +660,7 @@ void taskMainPidLoop(void)
 
 // Function for loop trigger
 void taskMainPidLoopChecker(void) {
-    // getTaskDeltaTime() returns delta time freezed at the moment of entering the scheduler. currentTime is freezed at the very same point. 
+    // getTaskDeltaTime() returns delta time freezed at the moment of entering the scheduler. currentTime is freezed at the very same point.
     // To make busy-waiting timeout work we need to account for time spent within busy-waiting loop
     uint32_t currentDeltaTime = getTaskDeltaTime(TASK_SELF);
 
@@ -747,6 +718,7 @@ bool taskUpdateRxCheck(uint32_t currentDeltaTime)
 void taskUpdateRxMain(void)
 {
     processRx();
+    updatePIDCoefficients(&currentProfile->pidProfile, currentControlRateProfile, &masterConfig.rxConfig);
     isRXDataNew = true;
 }
 

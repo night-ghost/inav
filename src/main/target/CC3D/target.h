@@ -71,6 +71,7 @@
 #define INVERTER
 #define BEEPER
 //#define DISPLAY
+//#define DISPLAY_ARMED_BITMAP
 
 #define USE_VCP
 #define USE_USART1
@@ -116,6 +117,8 @@
 #define GPS_PROTO_NAZA
 
 #define NAV
+//#define NAV_AUTO_MAG_DECLINATION
+#define NAV_GPS_GLITCH_DETECTION
 
 //#define LED_STRIP
 //#define LED_STRIP_TIMER TIM3
@@ -136,21 +139,15 @@
 
 #define SKIP_CLI_COMMAND_HELP
 
-//#define USE_SERIAL_1WIRE
-
-// FlexPort (pin 21/22, TX/RX respectively):
-// Note, FlexPort has 10k pullups on both TX and RX
-// JST Pin3 TX - connect to external UART/USB RX
-#define S1W_TX_GPIO         GPIOB
-#define S1W_TX_PIN          GPIO_Pin_10
-// JST Pin4 RX - connect to external UART/USB TX
-#define S1W_RX_GPIO         GPIOB
-#define S1W_RX_PIN          GPIO_Pin_11
+//#define USE_SERIAL_4WAY_BLHELI_INTERFACE
 
 #define SPEKTRUM_BIND
 // USART3, PB11 (Flexport)
 #define BIND_PORT  GPIOB
 #define BIND_PIN   Pin_11
+
+//Disables uncommon predefined mixer settings like BiCopter, H6 and similar exotics
+#define DISABLE_UNCOMMON_MIXERS
 
 // DEBUG
 //#define HIL

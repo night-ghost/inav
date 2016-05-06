@@ -26,6 +26,7 @@
 
 #include "flight/pid.h"
 #include "flight/failsafe.h"
+#include "flight/mixer.h"
 
 /* GPS Home location data */
 extern gpsLocation_t        GPS_home;
@@ -40,12 +41,7 @@ void onNewGPSData(void);
 #define NAV_BLACKBOX
 #endif
 
-// Features
-//#define INAV_ENABLE_AUTO_MAG_DECLINATION
-#define INAV_ENABLE_GPS_GLITCH_DETECTION
-
-// Maximum number of waypoints, special waypoint 0 = home,
-#define NAV_MAX_WAYPOINTS       15
+#define NAV_MAX_WAYPOINTS           15
 
 enum {
     NAV_GPS_ATTI    = 0,                    // Pitch/roll stick controls attitude (pitch/roll lean angles)
@@ -68,15 +64,16 @@ enum {
 
 typedef struct navConfig_s {
     struct {
-        uint8_t __stub;                     // Don't remember throttle when althold was initiated, assume that throttle is at middle = zero climb rate
+        uint8_t use_thr_mid_for_althold;    // Don't remember throttle when althold was initiated, assume that throttle is at Thr Mid = zero climb rate
         uint8_t extra_arming_safety;        // Forcibly apply 100% throttle tilt compensation
         uint8_t user_control_mode;          // NAV_GPS_ATTI or NAV_GPS_CRUISE
         uint8_t rth_alt_control_style;      // Controls how RTH controls altitude
         uint8_t rth_tail_first;             // Return to home tail first
+        uint8_t disarm_on_landing;          // 
     } flags;
 
     struct {
-#if defined(INAV_ENABLE_AUTO_MAG_DECLINATION)
+#if defined(NAV_AUTO_MAG_DECLINATION)
         uint8_t automatic_mag_declination;
 #endif
         uint8_t gps_min_sats;
@@ -110,6 +107,8 @@ typedef struct navConfig_s {
     uint16_t max_manual_speed;              // manual velocity control max horizontal speed
     uint16_t max_manual_climb_rate;         // manual velocity control max vertical speed
     uint16_t land_descent_rate;             // normal RTH landing descent rate
+    uint16_t land_slowdown_minalt;          // Altitude to stop lowering descent rate during RTH descend
+    uint16_t land_slowdown_maxalt;          // Altitude to start lowering descent rate during RTH descend
     uint16_t emerg_descent_rate;            // emergency landing descent rate
     uint16_t rth_altitude;                  // altitude to maintain when RTH is active (depends on rth_alt_control_style) (cm)
     uint16_t min_rth_distance;              // 0 Disables. Minimal distance for RTL in cm, otherwise it will just autoland
@@ -125,6 +124,7 @@ typedef struct navConfig_s {
     uint8_t  fw_max_climb_angle;            // Fixed wing max banking angle (deg)
     uint8_t  fw_max_dive_angle;             // Fixed wing max banking angle (deg)
     uint8_t  fw_pitch_to_throttle;          // Pitch angle (in deg) to throttle gain (in 1/1000's of throttle) (*10)
+    uint8_t  fw_roll_to_pitch;              // Roll to pitch compensation (in %)
     uint16_t fw_loiter_radius;              // Loiter radius when executing PH on a fixed wing
 } navConfig_t;
 
@@ -218,10 +218,12 @@ void navigationUseConfig(navConfig_t *navConfigToUse);
 void navigationUseRcControlsConfig(rcControlsConfig_t *initialRcControlsConfig);
 void navigationUseRxConfig(rxConfig_t * initialRxConfig);
 void navigationUseEscAndServoConfig(escAndServoConfig_t * initialEscAndServoConfig);
+void navigationUseFlight3DConfig(flight3DConfig_t * initialFlight3DConfig);
 void navigationInit(navConfig_t *initialnavConfig,
                     pidProfile_t *initialPidProfile,
                     rcControlsConfig_t *initialRcControlsConfig,
                     rxConfig_t * initialRxConfig,
+                    flight3DConfig_t * initialFlight3DConfig,
                     escAndServoConfig_t * initialEscAndServoConfig);
 
 /* Navigation system updates */
@@ -236,6 +238,7 @@ bool naivationRequiresAngleMode(void);
 bool navigationRequiresThrottleTiltCompensation(void);
 int8_t naivationGetHeadingControlState(void);
 bool naivationBlockArming(void);
+bool navigationPositionEstimateIsHealthy(void);
 
 /* Access to estimated position and velocity */
 float getEstimatedActualVelocity(int axis);
@@ -270,6 +273,8 @@ extern int16_t navActualVelocity[3];
 extern int16_t navDesiredVelocity[3];
 extern int16_t navTargetPosition[3];
 extern int32_t navLatestActualPosition[3];
+extern int16_t navTargetSurface;
+extern int16_t navActualSurface;
 extern int16_t navDebug[4];
 extern uint16_t navFlags;
 #define NAV_BLACKBOX_DEBUG(x,y) navDebug[x] = constrain((y), -32678, 32767)
