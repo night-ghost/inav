@@ -134,7 +134,7 @@ static uint32_t activeFeaturesLatch = 0;
 static uint8_t currentControlRateProfileIndex = 0;
 controlRateConfig_t *currentControlRateProfile;
 
-static const uint8_t EEPROM_CONF_VERSION = 118;
+static const uint8_t EEPROM_CONF_VERSION = 119;
 
 static void resetAccelerometerTrims(flightDynamicsTrims_t * accZero, flightDynamicsTrims_t * accGain)
 {
@@ -173,16 +173,18 @@ void resetPidProfile(pidProfile_t *pidProfile)
     pidProfile->P8[PIDLEVEL] = 120; // Self-level strength * 40 (4 * 40)
     pidProfile->I8[PIDLEVEL] = 15;  // Self-leveing low-pass frequency (0 - disabled)
     pidProfile->D8[PIDLEVEL] = 75;  // 75% horizon strength
-    pidProfile->P8[PIDMAG] = 40;
+    pidProfile->P8[PIDMAG] = 60;
     pidProfile->P8[PIDVEL] = 100;   // NAV_VEL_Z_P * 100
     pidProfile->I8[PIDVEL] = 50;    // NAV_VEL_Z_I * 100
     pidProfile->D8[PIDVEL] = 10;    // NAV_VEL_Z_D * 100
 
     pidProfile->acc_soft_lpf_hz = 15;
     pidProfile->gyro_soft_lpf_hz = 60;
-    pidProfile->dterm_lpf_hz = 30;
+    pidProfile->dterm_lpf_hz = 40;
+    pidProfile->yaw_lpf_hz = 30;
 
     pidProfile->yaw_p_limit = YAW_P_LIMIT_MAX;
+    pidProfile->mag_hold_rate_limit = MAG_HOLD_RATE_LIMIT_DEFAULT;
 
     pidProfile->max_angle_inclination[FD_ROLL] = 300;    // 30 degrees
     pidProfile->max_angle_inclination[FD_PITCH] = 300;    // 30 degrees
@@ -440,7 +442,7 @@ static void resetConf(void)
     masterConfig.dcm_ki_acc = 50;               // 0.005 * 10000
     masterConfig.dcm_kp_mag = 10000;            // 1.00 * 10000
     masterConfig.dcm_ki_mag = 0;                // 0.00 * 10000
-    masterConfig.gyro_lpf = 2;                  // BITS_DLPF_CFG_98HZ, In case of ST gyro, will default to 54Hz instead
+    masterConfig.gyro_lpf = 3;                  // INV_FILTER_42HZ, In case of ST gyro, will default to 32Hz instead
 
     resetAccelerometerTrims(&masterConfig.accZero, &masterConfig.accGain);
 
@@ -450,7 +452,6 @@ static void resetConf(void)
     masterConfig.boardAlignment.pitchDeciDegrees = 0;
     masterConfig.boardAlignment.yawDeciDegrees = 0;
     masterConfig.acc_hardware = ACC_DEFAULT;     // default/autodetect
-    masterConfig.yaw_control_direction = 1;
     masterConfig.gyroConfig.gyroMovementCalibrationThreshold = 32;
 
     masterConfig.mag_hardware = MAG_DEFAULT;     // default/autodetect
@@ -506,7 +507,7 @@ static void resetConf(void)
     masterConfig.gpsConfig.sbasMode = SBAS_AUTO;
     masterConfig.gpsConfig.autoConfig = GPS_AUTOCONFIG_ON;
     masterConfig.gpsConfig.autoBaud = GPS_AUTOBAUD_ON;
-    masterConfig.gpsConfig.navModel = GPS_MODEL_LOW_G;
+    masterConfig.gpsConfig.dynModel = GPS_DYNMODEL_AIR_1G;
 #endif
 
 #ifdef NAV

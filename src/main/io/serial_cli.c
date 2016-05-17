@@ -338,11 +338,11 @@ static const char * const lookupTableGPSProvider[] = {
 };
 
 static const char * const lookupTableGPSSBASMode[] = {
-    "AUTO", "EGNOS", "WAAS", "MSAS", "GAGAN"
+    "AUTO", "EGNOS", "WAAS", "MSAS", "GAGAN", "NONE"
 };
 
 static const char * const lookupTableGpsModel[] = {
-    "LOW_G", "HIGH_G"
+    "PEDESTRIAN", "AIR_1G", "AIR_4G"
 };
 #endif
 
@@ -371,10 +371,6 @@ static const char * const lookupTableSerialRX[] = {
     "XB-B",
     "XB-B-RJ01",
     "IBUS"
-};
-
-static const char * const lookupTableGyroFilter[] = {
-    "OFF", "LOW", "MEDIUM", "HIGH"
 };
 
 static const char * const lookupTableGyroLpf[] = {
@@ -412,7 +408,7 @@ typedef enum {
 #ifdef GPS
     TABLE_GPS_PROVIDER,
     TABLE_GPS_SBAS_MODE,
-    TABLE_GPS_NAV_MODEL,
+    TABLE_GPS_DYN_MODEL,
 #endif
 #ifdef BLACKBOX
     TABLE_BLACKBOX_DEVICE,
@@ -541,7 +537,7 @@ const clivalue_t valueTable[] = {
 #ifdef GPS
     { "gps_provider",               VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP,  &masterConfig.gpsConfig.provider, .config.lookup = { TABLE_GPS_PROVIDER }, 0 },
     { "gps_sbas_mode",              VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP,  &masterConfig.gpsConfig.sbasMode, .config.lookup = { TABLE_GPS_SBAS_MODE }, 0 },
-    { "gps_nav_model",              VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP,  &masterConfig.gpsConfig.navModel, .config.lookup = { TABLE_GPS_NAV_MODEL }, 0 },
+    { "gps_dyn_model",              VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP,  &masterConfig.gpsConfig.dynModel, .config.lookup = { TABLE_GPS_DYN_MODEL }, 0 },
     { "gps_auto_config",            VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP,  &masterConfig.gpsConfig.autoConfig, .config.lookup = { TABLE_OFF_ON }, 0 },
     { "gps_auto_baud",              VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP,  &masterConfig.gpsConfig.autoBaud, .config.lookup = { TABLE_OFF_ON }, 0 },
 #endif
@@ -664,11 +660,8 @@ const clivalue_t valueTable[] = {
 
     { "throttle_tilt_comp_str",     VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].throttle_tilt_compensation_strength, .config.minmax = { 0,  100 }, 0 },
 
-    { "yaw_control_direction",      VAR_INT8   | MASTER_VALUE,  &masterConfig.yaw_control_direction, .config.minmax = { -1,  1 }, 0 },
-
     { "yaw_motor_direction",        VAR_INT8   | MASTER_VALUE, &masterConfig.mixerConfig.yaw_motor_direction, .config.minmax = { -1,  1 }, 0 },
     { "yaw_jump_prevention_limit",  VAR_UINT16 | MASTER_VALUE, &masterConfig.mixerConfig.yaw_jump_prevention_limit, .config.minmax = { YAW_JUMP_PREVENTION_LIMIT_LOW,  YAW_JUMP_PREVENTION_LIMIT_HIGH }, 0 },
-    { "yaw_p_limit",                VAR_UINT16 | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.yaw_p_limit, .config.minmax = { YAW_P_LIMIT_MIN,  YAW_P_LIMIT_MAX }, 0 },
 
 #ifdef USE_SERVOS
     { "tri_unarmed_servo",          VAR_INT8   | MASTER_VALUE | MODE_LOOKUP, &masterConfig.mixerConfig.tri_unarmed_servo, .config.lookup = { TABLE_OFF_ON }, 0 },
@@ -709,6 +702,7 @@ const clivalue_t valueTable[] = {
 
     { "mag_hardware",               VAR_UINT8  | MASTER_VALUE,  &masterConfig.mag_hardware, .config.minmax = { 0,  MAG_MAX }, 0 },
     { "mag_declination",            VAR_INT16  | PROFILE_VALUE, &masterConfig.profile[0].mag_declination, .config.minmax = { -18000,  18000 }, 0 },
+    { "mag_hold_rate_limit",        VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.mag_hold_rate_limit, .config.minmax = { MAG_HOLD_RATE_LIMIT_MIN,  MAG_HOLD_RATE_LIMIT_MAX }, 0 },
 
     { "p_pitch",                    VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.P8[PITCH], .config.minmax = { 0,  200 }, 0 },
     { "i_pitch",                    VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.I8[PITCH], .config.minmax = { 0,  200 }, 0 },
@@ -730,6 +724,9 @@ const clivalue_t valueTable[] = {
 	{ "gyro_soft_lpf_hz",           VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.gyro_soft_lpf_hz, .config.minmax = {0, 200 } },
     { "acc_soft_lpf_hz",            VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.acc_soft_lpf_hz, .config.minmax = {0, 200 } },
     { "dterm_lpf_hz",               VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.dterm_lpf_hz, .config.minmax = {0, 200 } },
+    { "yaw_lpf_hz",                 VAR_UINT8  | PROFILE_VALUE, &masterConfig.profile[0].pidProfile.yaw_lpf_hz, .config.minmax = {0, 200 } },
+
+    { "yaw_p_limit",                VAR_UINT16 | PROFILE_VALUE,  &masterConfig.profile[0].pidProfile.yaw_p_limit, .config.minmax = { YAW_P_LIMIT_MIN,  YAW_P_LIMIT_MAX }, 0 },
 
 #ifdef BLACKBOX
     { "blackbox_rate_num",          VAR_UINT8  | MASTER_VALUE,  &masterConfig.blackbox_rate_num, .config.minmax = { 1,  32 }, 0 },
@@ -1121,7 +1118,7 @@ static void cliMotorMix(char *cmdline)
     int i, check = 0;
     int num_motors = 0;
     uint8_t len;
-    char buf[16];
+    char ftoaBuffer[FTOA_BUFFER_SIZE];
     char *ptr;
 
     if (isEmpty(cmdline)) {
@@ -1131,10 +1128,10 @@ static void cliMotorMix(char *cmdline)
                 break;
             num_motors++;
             cliPrintf("#%d:\t", i);
-            cliPrintf("%s\t", ftoa(masterConfig.customMotorMixer[i].throttle, buf));
-            cliPrintf("%s\t", ftoa(masterConfig.customMotorMixer[i].roll, buf));
-            cliPrintf("%s\t", ftoa(masterConfig.customMotorMixer[i].pitch, buf));
-            cliPrintf("%s\r\n", ftoa(masterConfig.customMotorMixer[i].yaw, buf));
+            cliPrintf("%s\t", ftoa(masterConfig.customMotorMixer[i].throttle, ftoaBuffer));
+            cliPrintf("%s\t", ftoa(masterConfig.customMotorMixer[i].roll, ftoaBuffer));
+            cliPrintf("%s\t", ftoa(masterConfig.customMotorMixer[i].pitch, ftoaBuffer));
+            cliPrintf("%s\r\n", ftoa(masterConfig.customMotorMixer[i].yaw, ftoaBuffer));
         }
         return;
     } else if (strncasecmp(cmdline, "reset", 5) == 0) {
@@ -1829,7 +1826,7 @@ void cliEnter(serialPort_t *serialPort)
     setPrintfSerialPort(cliPort);
     cliWriter = bufWriterInit(cliWriteBuffer, sizeof(cliWriteBuffer),
                               (bufWrite_t)serialWriteBufShim, serialPort);
-    
+
     cliPrint("\r\nEntering CLI Mode, type 'exit' to return, or 'help'\r\n");
     cliPrompt();
     ENABLE_ARMING_FLAG(PREVENT_ARMING);
@@ -1841,7 +1838,7 @@ static void cliExit(char *cmdline)
 
     cliPrint("\r\nLeaving CLI mode, unsaved changes lost.\r\n");
     bufWriterFlush(cliWriter);
-    
+
     *cliBuffer = '\0';
     bufferIndex = 0;
     cliMode = 0;
@@ -2259,7 +2256,7 @@ static void cliWrite(uint8_t ch)
 static void cliPrintVar(const clivalue_t *var, uint32_t full)
 {
     int32_t value = 0;
-    char buf[8];
+    char ftoaBuffer[FTOA_BUFFER_SIZE];
 
     void *ptr = var->ptr;
     if ((var->type & VALUE_SECTION_MASK) == PROFILE_VALUE) {
@@ -2291,23 +2288,31 @@ static void cliPrintVar(const clivalue_t *var, uint32_t full)
             break;
 
         case VAR_FLOAT:
-            cliPrintf("%s", ftoa(*(float *)ptr, buf));
             if (full && (var->type & VALUE_MODE_MASK) == MODE_DIRECT) {
-                cliPrintf(" %s", ftoa((float)var->config.minmax.min, buf));
-                cliPrintf(" %s", ftoa((float)var->config.minmax.max, buf));
+                cliPrintf("%s", ftoa((float)var->config.minmax.min, ftoaBuffer));
+                cliPrintf(" - %s", ftoa((float)var->config.minmax.max, ftoaBuffer));
+            } else {
+                cliPrintf("%s", ftoa(*(float *)ptr, ftoaBuffer));
             }
             return; // return from case for float only
     }
 
     switch(var->type & VALUE_MODE_MASK) {
         case MODE_DIRECT:
-            cliPrintf("%d", value);
             if (full) {
-                cliPrintf(" %d %d", var->config.minmax.min, var->config.minmax.max);
+                cliPrintf("%d - %d", var->config.minmax.min, var->config.minmax.max);
+            } else {
+                cliPrintf("%d", value);
             }
             break;
         case MODE_LOOKUP:
-            cliPrintf(lookupTables[var->config.lookup.tableIndex].values[value]);
+            if (full) {
+                for (int i=0; i<lookupTables[var->config.lookup.tableIndex].valueCount; i++) {
+                    cliPrintf("%s ", lookupTables[var->config.lookup.tableIndex].values[i]);
+                }
+            } else {
+                cliPrintf(lookupTables[var->config.lookup.tableIndex].values[value]);
+            }
             break;
     }
 }
@@ -2388,20 +2393,22 @@ static void cliSet(char *cmdline)
                 int_float_value_t tmp;
                 switch (valueTable[i].type & VALUE_MODE_MASK) {
                     case MODE_DIRECT: {
-                            int32_t value = 0;
-                            float valuef = 0;
+                            if(*eqptr != 0 && strspn(eqptr, "0123456789.+-") == strlen(eqptr)) {
+                                int32_t value = 0;
+                                float valuef = 0;
 
-                            value = atoi(eqptr);
-                            valuef = fastA2F(eqptr);
+                                value = atoi(eqptr);
+                                valuef = fastA2F(eqptr);
 
-                            if (valuef >= valueTable[i].config.minmax.min && valuef <= valueTable[i].config.minmax.max) { // note: compare float value
+                                if (valuef >= valueTable[i].config.minmax.min && valuef <= valueTable[i].config.minmax.max) { // note: compare float value
 
-                                if ((valueTable[i].type & VALUE_TYPE_MASK) == VAR_FLOAT)
-                                    tmp.float_value = valuef;
-                                else
-                                    tmp.int_value = value;
+                                    if ((valueTable[i].type & VALUE_TYPE_MASK) == VAR_FLOAT)
+                                        tmp.float_value = valuef;
+                                    else
+                                        tmp.int_value = value;
 
-                                changeValue = true;
+                                    changeValue = true;
+                                }
                             }
                         }
                         break;
@@ -2426,7 +2433,9 @@ static void cliSet(char *cmdline)
                     cliPrintf("%s set to ", valueTable[i].name);
                     cliPrintVar(val, 0);
                 } else {
-                    cliPrint("Invalid value\r\n");
+                    cliPrint("Invalid value. Allowed values are: ");
+                    cliPrintVar(val, 1); // print out min/max/table values
+                    cliPrint("\r\n");
                 }
 
                 return;
@@ -2557,7 +2566,7 @@ void cliProcess(void)
 
     // Be a little bit tricky.  Flush the last inputs buffer, if any.
     bufWriterFlush(cliWriter);
-    
+
     while (serialRxBytesWaiting(cliPort)) {
         uint8_t c = serialRead(cliPort);
         if (c == '\t' || c == '?') {
