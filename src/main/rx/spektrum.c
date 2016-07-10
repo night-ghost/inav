@@ -20,7 +20,9 @@
 #include <stdlib.h>
 
 #include <platform.h>
-#include "debug.h"
+#include "build/debug.h"
+
+#include "config/parameter_group.h"
 
 #include "drivers/gpio.h"
 #include "drivers/system.h"
@@ -31,7 +33,7 @@
 #include "drivers/serial_uart.h"
 #include "io/serial.h"
 
-#include "config/config.h"
+#include "fc/config.h"
 
 #include "rx/rx.h"
 #include "rx/spektrum.h"
@@ -59,11 +61,11 @@ static uint16_t spektrumReadRawRC(rxRuntimeConfig_t *rxRuntimeConfig, uint8_t ch
 
 static rxRuntimeConfig_t *rxRuntimeConfigPtr;
 
-bool spektrumInit(rxConfig_t *rxConfig, rxRuntimeConfig_t *rxRuntimeConfig, rcReadRawDataPtr *callback)
+bool spektrumInit(rxRuntimeConfig_t *rxRuntimeConfig, rcReadRawDataPtr *callback)
 {
     rxRuntimeConfigPtr = rxRuntimeConfig;
 
-    switch (rxConfig->serialrx_provider) {
+    switch (rxConfig()->serialrx_provider) {
         case SERIALRX_SPEKTRUM2048:
             // 11 bit frames
             spek_chan_shift = 3;

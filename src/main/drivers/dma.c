@@ -21,7 +21,7 @@
 
 #include <platform.h>
 
-#include "build_config.h"
+#include "build/build_config.h"
 
 #include "drivers/dma.h"
 #if defined(STM32F303xC) || defined(STM32F10X)

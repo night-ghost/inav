@@ -20,7 +20,13 @@
 
 #include <platform.h>
 
+#include "build/build_config.h"
+
 #include "common/axis.h"
+
+#include "config/parameter_group.h"
+#include "config/parameter_group_ids.h"
+#include "config/profile.h"
 
 #include "drivers/sensor.h"
 #include "drivers/compass.h"
@@ -29,8 +35,9 @@
 #include "drivers/light_led.h"
 
 #include "sensors/boardalignment.h"
-#include "config/runtime_config.h"
-#include "config/config.h"
+
+#include "fc/runtime_config.h"
+#include "fc/config.h"
 
 #include "sensors/sensors.h"
 #include "sensors/compass.h"
@@ -39,7 +46,15 @@
 #include "hardware_revision.h"
 #endif
 
+PG_REGISTER_PROFILE_WITH_RESET_TEMPLATE(compassConfig_t, compassConfig, PG_COMPASS_CONFIGURATION, 0);
+
+PG_RESET_TEMPLATE(compassConfig_t, compassConfig,
+    .mag_declination = 0,
+);
+
 mag_t mag;                   // mag access functions
+
+float magneticDeclination = 0.0f;
 
 extern uint32_t currentTime; // FIXME dependency on global variable, pass it in instead.
 
@@ -105,3 +120,19 @@ void updateCompass(flightDynamicsTrims_t *magZero)
     }
 }
 #endif
+
+void recalculateMagneticDeclination(void)
+{
+    int16_t deg, min;
+
+    if (sensors(SENSOR_MAG)) {
+        // calculate magnetic declination
+        deg = compassConfig()->mag_declination / 100;
+        min = compassConfig()->mag_declination % 100;
+
+        magneticDeclination = (deg + ((float)min * (1.0f / 60.0f))) * 10; // heading is in 0.1deg units
+    } else {
+        magneticDeclination = 0.0f; // TODO investigate if this is actually needed if there is no mag sensor or if the value stored in the config should be used.
+    }
+
+}

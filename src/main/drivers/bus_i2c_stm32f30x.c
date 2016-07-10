@@ -21,7 +21,7 @@
 
 #include <platform.h>
 
-#include "build_config.h"
+#include "build/build_config.h"
 
 #include "gpio.h"
 #include "system.h"
@@ -88,7 +88,8 @@ static volatile uint16_t i2cErrorCount = 0;
 
 static bool i2cOverClock;
 
-void i2cSetOverclock(uint8_t OverClock) {
+void i2cSetOverclock(uint8_t OverClock)
+{
     i2cOverClock = (OverClock) ? true : false;
 }
 

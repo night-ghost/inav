@@ -83,7 +83,6 @@
 
 #define GYRO
 #define USE_GYRO_MPU3050
-#define MPU3050_BUS I2C_DEVICE_INT
 #define USE_GYRO_MPU6050
 #define USE_GYRO_MPU6500
 #define USE_GYRO_SPI_MPU6500
@@ -95,16 +94,11 @@
 
 #define ACC
 #define USE_ACC_ADXL345
-#define ADXL345_BUS I2C_DEVICE_INT
 #define USE_ACC_BMA280
-#define BMA280_BUS I2C_DEVICE_INT
 #define USE_ACC_MMA8452
-#define MMA8452_BUS I2C_DEVICE_INT
 #define USE_ACC_MPU6050
 #define USE_ACC_MPU6500
 #define USE_ACC_SPI_MPU6500
-#define MPU6050_BUS I2C_DEVICE_INT
-#define L3G4200D_BUS I2C_DEVICE_INT
 
 #define ACC_ADXL345_ALIGN CW270_DEG
 #define ACC_MPU6050_ALIGN CW0_DEG
@@ -114,25 +108,35 @@
 
 #define BARO
 #define USE_BARO_MS5611
-#define MS5611_BUS I2C_DEVICE_INT
 #define USE_BARO_BMP085
-#define BMP085_BUS I2C_DEVICE_INT
 #define USE_BARO_BMP280
-#define BMP280_BUS I2C_DEVICE_INT
 
 #define MAG
 #define USE_MAG_HMC5883
-#define HMC5883_BUS I2C_DEVICE_INT
 
 #define MAG_HMC5883_ALIGN CW180_DEG
 
-#define SONAR
 #define BEEPER
 #define LED0
 #define LED1
 #define INVERTER
 #define DISPLAY
-#define UG2864_BUS I2C_DEVICE_INT
+
+#define SONAR
+#define SONAR_PWM_TRIGGER_PIN       Pin_8   // PWM5 (PB8) - 5v tolerant
+#define SONAR_PWM_TRIGGER_GPIO      GPIOB
+#define SONAR_PWM_ECHO_PIN          Pin_9   // PWM6 (PB9) - 5v tolerant
+#define SONAR_PWM_ECHO_GPIO         GPIOB
+#define SONAR_PWM_EXTI_LINE         EXTI_Line9
+#define SONAR_PWM_EXTI_PIN_SOURCE   GPIO_PinSource9
+#define SONAR_PWM_EXTI_IRQN         EXTI9_5_IRQn
+#define SONAR_TRIGGER_PIN           Pin_0   // RX7 (PB0) - only 3.3v ( add a 1K Ohms resistor )
+#define SONAR_TRIGGER_GPIO          GPIOB
+#define SONAR_ECHO_PIN              Pin_1   // RX8 (PB1) - only 3.3v ( add a 1K Ohms resistor )
+#define SONAR_ECHO_GPIO             GPIOB
+#define SONAR_EXTI_LINE             EXTI_Line1
+#define SONAR_EXTI_PIN_SOURCE       GPIO_PinSource1
+#define SONAR_EXTI_IRQN             EXTI1_IRQn
 
 #define USE_UART1
 #define USE_UART2
@@ -157,7 +161,6 @@
 
 #define USE_I2C
 #define I2C_DEVICE (I2CDEV_2)
-#define I2C_DEVICE_INT (I2CDEV_2)
 
 // #define SOFT_I2C // enable to test software i2c
 // #define SOFT_I2C_PB1011 // If SOFT_I2C is enabled above, need to define pinout as well (I2C1 = PB67, I2C2 = PB1011)
@@ -200,31 +203,17 @@
 #define BIND_PORT  GPIOA
 #define BIND_PIN   Pin_3
 
-#define USE_SERIAL_4WAY_BLHELI_BOOTLOADER
-#define USE_SERIAL_4WAY_SK_BOOTLOADER
+#define USE_SERIAL_4WAY_BLHELI_INTERFACE
 
-#if !(defined(USE_SERIAL_4WAY_BLHELI_BOOTLOADER) || defined(USE_SERIAL_4WAY_SK_BOOTLOADER))
-#ifdef USE_VCP
-#define USE_SERIAL_1WIRE_VCP
-#else
-#define USE_SERIAL_1WIRE
-#endif
-#endif
-
-#ifdef USE_SERIAL_1WIRE
-// STM32F103CBT6-LQFP48 Pin30 (PA9) TX - PC3 connects to onboard CP2102 RX
-#define S1W_TX_GPIO         GPIOA
-#define S1W_TX_PIN          GPIO_Pin_9
-// STM32F103CBT6-LQFP48 Pin31 (PA10) RX - PC1 to onboard CP2102 TX
-#define S1W_RX_GPIO         GPIOA
-#define S1W_RX_PIN          GPIO_Pin_10
-#endif
-
-// alternative defaults for AlienWii32 F1 target
-#ifdef ALIENWII32
+// alternative defaults for AlienFlight F1 target
+#ifdef ALIENFLIGHT
 #undef TARGET_BOARD_IDENTIFIER
-#define TARGET_BOARD_IDENTIFIER "AWF1" // AlienWii32 F1.
+#define TARGET_BOARD_IDENTIFIER "AFF1" // AlienFlight F1.
 #undef BOARD_HAS_VOLTAGE_DIVIDER
+
+#define DEFAULT_RX_FEATURE FEATURE_RX_SERIAL
+#define DEFAULT FEATURES FEATURE_MOTOR_STOP
+
 #define HARDWARE_BIND_PLUG
 
 // Hardware bind plug at PB5 (Pin 41)

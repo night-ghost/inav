@@ -25,11 +25,13 @@
 #include "gpio.h"
 #include "timer.h"
 
-#include "flight/failsafe.h" // FIXME dependency into the main code from a driver
-
 #include "pwm_mapping.h"
 
 #include "pwm_output.h"
+
+#include "common/maths.h"
+
+#define MAX_PWM_OUTPUT_PORTS MAX(MAX_MOTORS, MAX_SERVOS)
 
 typedef void (*pwmWriteFuncPtr)(uint8_t index, uint16_t value);  // function pointer used to write motors
 

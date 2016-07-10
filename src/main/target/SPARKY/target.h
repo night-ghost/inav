@@ -36,17 +36,14 @@
 
 #define ACC
 #define USE_ACC_MPU6050
-#define MPU6050_BUS I2C_DEVICE_INT
 
 #define ACC_MPU6050_ALIGN CW270_DEG
 
 #define BARO
 #define USE_BARO_MS5611
-#define MS5611_BUS I2C_DEVICE_INT
 
 #define MAG
 #define USE_MAG_AK8975
-#define AK8975_BUS I2C_DEVICE_INT
 
 #define MAG_AK8975_ALIGN CW180_DEG_FLIP
 
@@ -85,7 +82,7 @@
 // Note: PA5 and PA0 are N/C on the sparky - potentially use for ADC or LED STRIP?
 
 #define USE_I2C
-#define I2C_DEVICE_INT (I2CDEV_2) // SDA (PA10/AF4), SCL (PA9/AF4)
+#define I2C_DEVICE (I2CDEV_2) // SDA (PA10/AF4), SCL (PA9/AF4)
 
 #define I2C2_SCL_GPIO        GPIOA
 #define I2C2_SCL_GPIO_AF     GPIO_AF_4
@@ -112,17 +109,25 @@
 #define CURRENT_METER_ADC_GPIO_PIN  GPIO_Pin_7
 #define CURRENT_METER_ADC_CHANNEL   ADC_Channel_4
 
+#define DEFAULT_RX_FEATURE FEATURE_RX_PPM
+
 #define BLACKBOX
 #define GPS
 #define GTUNE
 #define DISPLAY
-#define UG2864_BUS I2C_DEVICE_INT
-
 #define SERIAL_RX
 #define TELEMETRY
 #define USE_SERVOS
 #define USE_CLI
+
 #define SONAR
+#define SONAR_TRIGGER_PIN           Pin_2   // PWM6 (PA2) - only 3.3v ( add a 1K Ohms resistor )
+#define SONAR_TRIGGER_GPIO          GPIOA
+#define SONAR_ECHO_PIN              Pin_1   // PWM7 (PB1) - only 3.3v ( add a 1K Ohms resistor )
+#define SONAR_ECHO_GPIO             GPIOB
+#define SONAR_EXTI_LINE             EXTI_Line1
+#define SONAR_EXTI_PIN_SOURCE       EXTI_PinSource1
+#define SONAR_EXTI_IRQN             EXTI1_IRQn
 
 #define LED_STRIP
 #if 1
@@ -163,23 +168,7 @@
 
 #endif
 
-#define USE_SERIAL_4WAY_BLHELI_BOOTLOADER
-#define USE_SERIAL_4WAY_SK_BOOTLOADER
-
-#if !(defined(USE_SERIAL_4WAY_BLHELI_BOOTLOADER) || defined(USE_SERIAL_4WAY_SK_BOOTLOADER))
-#ifdef USE_VCP
-#define USE_SERIAL_1WIRE_VCP
-#else
-#define USE_SERIAL_1WIRE
-#endif
-#endif
-
-#ifdef USE_SERIAL_1WIRE
-#define S1W_TX_GPIO         GPIOB
-#define S1W_TX_PIN          GPIO_Pin_6
-#define S1W_RX_GPIO         GPIOB
-#define S1W_RX_PIN          GPIO_Pin_7
-#endif
+#define USE_SERIAL_4WAY_BLHELI_INTERFACE
 
 #define SPEKTRUM_BIND
 // UART2, PA3

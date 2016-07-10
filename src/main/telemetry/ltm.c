@@ -33,36 +33,29 @@
 
 #include <platform.h>
 
-#include "build_config.h"
+#include "build/build_config.h"
 
 #ifdef TELEMETRY
 
 #include "common/maths.h"
 #include "common/axis.h"
-#include "common/color.h"
+
+#include "config/parameter_group.h"
 
 #include "drivers/system.h"
 #include "drivers/sensor.h"
 #include "drivers/accgyro.h"
-#include "drivers/gpio.h"
-#include "drivers/timer.h"
 #include "drivers/serial.h"
-#include "drivers/pwm_rx.h"
 
-#include "io/rc_controls.h"
+#include "fc/rc_controls.h"
+#include "fc/fc_serial.h"
 
 #include "sensors/sensors.h"
 #include "sensors/acceleration.h"
-#include "sensors/gyro.h"
-#include "sensors/barometer.h"
-#include "sensors/pitotmeter.h"
-#include "sensors/boardalignment.h"
 #include "sensors/battery.h"
 
 #include "io/serial.h"
-#include "io/gimbal.h"
 #include "io/gps.h"
-#include "io/ledstrip.h"
 
 #include "flight/mixer.h"
 #include "flight/pid.h"
@@ -74,10 +67,7 @@
 #include "telemetry/telemetry.h"
 #include "telemetry/ltm.h"
 
-#include "config/config.h"
-#include "config/runtime_config.h"
-#include "config/config_profile.h"
-#include "config/config_master.h"
+#include "fc/runtime_config.h"
 
 #define TELEMETRY_LTM_INITIAL_PORT_MODE MODE_TX
 #define LTM_CYCLETIME   100
@@ -85,7 +75,6 @@
 extern uint16_t rssi;           // FIXME dependency on mw.c
 static serialPort_t *ltmPort;
 static serialPortConfig_t *portConfig;
-static telemetryConfig_t *telemetryConfig;
 static bool ltmEnabled;
 static portSharing_e ltmPortSharing;
 static uint8_t ltm_crc;
@@ -273,9 +262,8 @@ void freeLtmTelemetryPort(void)
     ltmEnabled = false;
 }
 
-void initLtmTelemetry(telemetryConfig_t *initialTelemetryConfig)
+void initLtmTelemetry(void)
 {
-    telemetryConfig = initialTelemetryConfig;
     portConfig = findSerialPortConfig(FUNCTION_TELEMETRY_LTM);
     ltmPortSharing = determinePortSharing(portConfig, FUNCTION_TELEMETRY_LTM);
 }
@@ -285,7 +273,7 @@ void configureLtmTelemetryPort(void)
     if (!portConfig) {
         return;
     }
-    baudRate_e baudRateIndex = portConfig->telemetry_baudrateIndex;
+    baudRate_e baudRateIndex = portConfig->baudRates[BAUDRATE_TELEMETRY];
     if (baudRateIndex == BAUD_AUTO) {
         baudRateIndex = BAUD_19200;
     }

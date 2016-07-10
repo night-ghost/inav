@@ -45,6 +45,10 @@
 #define USE_SPI_DEVICE_1
 
 #define SPI1_GPIO               GPIOB
+#define SPI1_NSS_GPIO           GPIOA
+#define SPI1_NSS_PERIPHERAL     RCC_AHBPeriph_GPIOA
+#define SPI1_NSS_PIN            GPIO_Pin_4
+#define SPI1_NSS_PIN_SOURCE     GPIO_PinSource4
 #define SPI1_GPIO_PERIPHERAL    RCC_AHBPeriph_GPIOB
 #define SPI1_SCK_PIN            GPIO_Pin_3
 #define SPI1_SCK_PIN_SOURCE     GPIO_PinSource3
@@ -69,13 +73,12 @@
 
 #define BARO
 #define USE_BARO_MS5611
-#define MS5611_BUS I2C_DEVICE_INT
 
 #define MAG
+#define USE_MPU9250_MAG // Enables bypass configuration
 #define USE_MAG_HMC5883
-#define HMC5883_BUS I2C_DEVICE_INT
+#define USE_MAG_AK8963
 #define USE_MAG_AK8975
-#define AK8975_BUS I2C_DEVICE_INT
 
 #define BEEPER
 #define LED0
@@ -111,11 +114,8 @@
 #define UART3_TX_PINSOURCE  GPIO_PinSource10
 #define UART3_RX_PINSOURCE  GPIO_PinSource11
 
-#define USE_ESCSERIAL
-#define ESCSERIAL_TIMER_TX_HARDWARE 0 // PWM 1
-
 #define USE_I2C
-#define I2C_DEVICE_INT (I2CDEV_2)
+#define I2C_DEVICE (I2CDEV_2)
 
 #define I2C2_SCL_GPIO        GPIOA
 #define I2C2_SCL_GPIO_AF     GPIO_AF_4
@@ -134,6 +134,7 @@
 #define ADC_AHB_PERIPHERAL          RCC_AHBPeriph_DMA1
 #define ADC_DMA_CHANNEL             DMA1_Channel1
 
+#define BOARD_HAS_VOLTAGE_DIVIDER
 #define VBAT_ADC_GPIO               GPIOC
 #define VBAT_ADC_GPIO_PIN           GPIO_Pin_0
 #define VBAT_ADC_CHANNEL            ADC_Channel_6
@@ -150,11 +151,7 @@
 #define EXTERNAL1_ADC_GPIO_PIN      GPIO_Pin_3
 #define EXTERNAL1_ADC_CHANNEL       ADC_Channel_9
 
-#define BLACKBOX
-#define GPS
-#define GTUNE
 #define LED_STRIP
-
 #define LED_STRIP_TIMER TIM16
 
 #define WS2811_GPIO                     GPIOA
@@ -175,26 +172,16 @@
 #define USE_MPU_DATA_READY_SIGNAL
 #define ENSURE_MPU_DATA_READY_IS_LOW
 
+#define USE_SERIAL_4WAY_BLHELI_INTERFACE
+
+#define DEFAULT_RX_FEATURE FEATURE_RX_PPM
+#define DEFAULT FEATURES (FEATURE_ONESHOT125 | FEATURE_LED_STRIP)
+
+#define BLACKBOX
+#define GPS
+#define GTUNE
 #define TELEMETRY
 #define SERIAL_RX
 #define USE_SERVOS
 #define USE_CLI
-#define UG2864_BUS I2C_DEVICE_INT
 
-#define USE_SERIAL_4WAY_BLHELI_BOOTLOADER
-#define USE_SERIAL_4WAY_SK_BOOTLOADER
-
-#if !(defined(USE_SERIAL_4WAY_BLHELI_BOOTLOADER) || defined(USE_SERIAL_4WAY_SK_BOOTLOADER))
-#ifdef USE_VCP
-#define USE_SERIAL_1WIRE_VCP
-#else
-#define USE_SERIAL_1WIRE
-#endif
-#endif
-
-#ifdef USE_SERIAL_1WIRE
-#define S1W_TX_GPIO         GPIOB
-#define S1W_TX_PIN          GPIO_Pin_10
-#define S1W_RX_GPIO         GPIOB
-#define S1W_RX_PIN          GPIO_Pin_11
-#endif
