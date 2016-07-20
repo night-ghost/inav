@@ -37,6 +37,7 @@
 #include "config/parameter_group_ids.h"
 #include "config/feature.h"
 
+#include "drivers/dma.h"
 #include "drivers/system.h"
 #include "drivers/serial.h"
 #include "drivers/serial_uart.h"
