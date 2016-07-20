@@ -63,7 +63,7 @@
 #include "sensors/boardalignment.h"
 #include "sensors/sensors.h"
 #include "sensors/battery.h"
-#include "sensors/sonar.h"
+#include "sensors/rangefinder.h"
 #include "sensors/acceleration.h"
 #include "sensors/barometer.h"
 #include "sensors/compass.h"
@@ -238,12 +238,14 @@ static void tailSerialReply(void)
     serialEndWrite(mspSerialPort);
 }
 
+#ifdef USE_SERVOS
 static void s_struct(uint8_t *cb, uint8_t siz)
 {
     headSerialReply(siz);
     while (siz--)
         serialize8(*cb++);
 }
+#endif
 
 static void serializeNames(const char *s)
 {
@@ -680,7 +682,10 @@ static bool processOutCommand(uint8_t cmdMSP)
         break;
 #endif
     case MSP_MOTOR:
-        s_struct((uint8_t *)motor, 16);
+        headSerialReply(16);
+        for (unsigned i = 0; i < 8; i++) {
+            serialize16(i < MAX_SUPPORTED_MOTORS ? motor[i] : 0);
+        }
         break;
     case MSP_RC:
         headSerialReply(2 * rxRuntimeConfig.channelCount);
@@ -706,7 +711,7 @@ static bool processOutCommand(uint8_t cmdMSP)
     case MSP_SONAR_ALTITUDE:
         headSerialReply(4);
 #if defined(SONAR)
-        serialize32(sonarGetLatestAltitude());
+        serialize32(rangefinderGetLatestAltitude());
 #else
         serialize32(0);
 #endif
@@ -732,7 +737,7 @@ static bool processOutCommand(uint8_t cmdMSP)
         break;
     case MSP_RC_TUNING:
         headSerialReply(11);
-        serialize8(currentControlRateProfile->rcRate8);
+        serialize8(100); //rcRate8 kept for compatibity reasons, this setting is no longer used
         serialize8(currentControlRateProfile->rcExpo8);
         for (i = 0 ; i < 3; i++) {
             serialize8(currentControlRateProfile->rates[i]); // R,P,Y see flight_dynamics_index_t
@@ -956,7 +961,7 @@ static bool processOutCommand(uint8_t cmdMSP)
         break;
 
     case MSP_RX_CONFIG:
-        headSerialReply(12);
+        headSerialReply(13);
         serialize8(masterConfig.rxConfig.serialrx_provider);
         serialize16(masterConfig.rxConfig.maxcheck);
         serialize16(masterConfig.rxConfig.midrc);
@@ -964,6 +969,7 @@ static bool processOutCommand(uint8_t cmdMSP)
         serialize8(masterConfig.rxConfig.spektrum_sat_bind);
         serialize16(masterConfig.rxConfig.rx_min_usec);
         serialize16(masterConfig.rxConfig.rx_max_usec);
+        serialize8(masterConfig.rxConfig.nrf24rx_protocol);
         break;
 
     case MSP_FAILSAFE_CONFIG:
@@ -1139,6 +1145,7 @@ static bool processInCommand(void)
         updateMagHoldHeading(read16());
         break;
     case MSP_SET_RAW_RC:
+#ifndef SKIP_RX_MSP
         {
             uint8_t channelCount = currentPort->dataSize / sizeof(uint16_t);
             if (channelCount > MAX_SUPPORTED_RC_CHANNEL_COUNT) {
@@ -1153,6 +1160,7 @@ static bool processInCommand(void)
                 rxMspFrameReceive(frame, channelCount);
             }
         }
+#endif
         break;
     case MSP_SET_ARMING_CONFIG:
         masterConfig.auto_disarm_delay = read8();
@@ -1213,11 +1221,16 @@ static bool processInCommand(void)
 
     case MSP_SET_RC_TUNING:
         if (currentPort->dataSize >= 10) {
-            currentControlRateProfile->rcRate8 = read8();
+            read8(); //Read rcRate8, kept for protocol compatibility reasons
             currentControlRateProfile->rcExpo8 = read8();
             for (i = 0; i < 3; i++) {
                 rate = read8();
-                currentControlRateProfile->rates[i] = MIN(rate, i == FD_YAW ? CONTROL_RATE_CONFIG_YAW_RATE_MAX : CONTROL_RATE_CONFIG_ROLL_PITCH_RATE_MAX);
+                if (i == FD_YAW) {
+                    currentControlRateProfile->rates[i] = constrain(rate, CONTROL_RATE_CONFIG_YAW_RATE_MIN, CONTROL_RATE_CONFIG_YAW_RATE_MAX);
+                }
+                else {
+                    currentControlRateProfile->rates[i] = constrain(rate, CONTROL_RATE_CONFIG_ROLL_PITCH_RATE_MIN, CONTROL_RATE_CONFIG_ROLL_PITCH_RATE_MAX);
+                }
             }
             rate = read8();
             currentControlRateProfile->dynThrPID = MIN(rate, CONTROL_RATE_CONFIG_TPA_MAX);
@@ -1263,8 +1276,12 @@ static bool processInCommand(void)
         masterConfig.batteryConfig.vbatwarningcellvoltage = read8();  // vbatlevel when buzzer starts to alert
         break;
     case MSP_SET_MOTOR:
-        for (i = 0; i < 8; i++) // FIXME should this use MAX_MOTORS or MAX_SUPPORTED_MOTORS instead of 8
-            motor_disarmed[i] = read16();
+        for (i = 0; i < 8; i++) {
+            const int16_t disarmed = read16();
+            if (i < MAX_SUPPORTED_MOTORS) {
+                motor_disarmed[i] = disarmed;
+            }
+        }
         break;
     case MSP_SET_SERVO_CONFIGURATION:
 #ifdef USE_SERVOS
@@ -1437,6 +1454,9 @@ static bool processInCommand(void)
         if (currentPort->dataSize > 8) {
             masterConfig.rxConfig.rx_min_usec = read16();
             masterConfig.rxConfig.rx_max_usec = read16();
+        }
+        if (currentPort->dataSize > 12) {
+            masterConfig.rxConfig.nrf24rx_protocol = read8();
         }
         break;
 

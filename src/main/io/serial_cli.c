@@ -94,6 +94,7 @@ uint8_t cliMode = 0;
 #ifdef USE_CLI
 
 extern uint16_t cycleTime; // FIXME dependency on mw.c
+extern uint8_t detectedSensors[SENSOR_INDEX_COUNT];
 
 void gpsEnablePassthrough(serialPort_t *gpsPassthroughPort);
 
@@ -184,7 +185,7 @@ static const char * const featureNames[] = {
     "SERVO_TILT", "SOFTSERIAL", "GPS", "FAILSAFE",
     "SONAR", "TELEMETRY", "CURRENT_METER", "3D", "RX_PARALLEL_PWM",
     "RX_MSP", "RSSI_ADC", "LED_STRIP", "DISPLAY", "ONESHOT125",
-    "BLACKBOX", "CHANNEL_FORWARDING", NULL
+    "BLACKBOX", "CHANNEL_FORWARDING", "RX_NRF24", "SOFTSPI", NULL
 };
 
 // sync this with rxFailsafeChannelMode_e
@@ -195,20 +196,26 @@ static const rxFailsafeChannelMode_e rxFailsafeModesTable[RX_FAILSAFE_TYPE_COUNT
     { RX_FAILSAFE_MODE_INVALID, RX_FAILSAFE_MODE_HOLD, RX_FAILSAFE_MODE_SET }
 };
 
-#ifndef CJMCU
+#if (FLASH_SIZE > 64)
 // sync this with sensors_e
 static const char * const sensorTypeNames[] = {
     "GYRO", "ACC", "BARO", "MAG", "SONAR", "GPS", "GPS+MAG", NULL
 };
 
-#define SENSOR_NAMES_MASK (SENSOR_GYRO | SENSOR_ACC | SENSOR_BARO | SENSOR_MAG)
+#define SENSOR_NAMES_MASK (SENSOR_GYRO | SENSOR_ACC | SENSOR_BARO | SENSOR_MAG | SENSOR_SONAR)
+// sync with gyroSensor_e
+static const char * const gyroNames[] = { "", "None", "MPU6050", "L3G4200D", "MPU3050", "L3GD20", "MPU6000", "MPU6500", "FAKE"};
+// sync with accelerationSensor_e
+static const char * const accNames[] = { "None", "", "ADXL345", "MPU6050", "MMA845x", "BMA280", "LSM303DLHC", "MPU6000", "MPU6500", "FAKE"};
+// sync with baroSensor_e
+static const char * const baroNames[] = { "", "None", "BMP085", "MS5611", "BMP280", "FAKE"};
+// sync with magSensor_e
+static const char * const magNames[] = { "None", "", "HMC5883", "AK8975", "MAG_GPS", "MAG_MAG3110", "FAKE"};
+// sycn with rangefinderType_e
+static const char * const rangefinderNames[] = { "None", "HCSR04", "SRF10"};
 
-static const char * const sensorHardwareNames[4][11] = {
-    { "", "None", "MPU6050", "L3G4200D", "MPU3050", "L3GD20", "MPU6000", "MPU6500", "FAKE", NULL },
-    { "", "None", "ADXL345", "MPU6050", "MMA845x", "BMA280", "LSM303DLHC", "MPU6000", "MPU6500", "FAKE", NULL },
-    { "", "None", "BMP085", "MS5611", "BMP280", "FAKE", NULL },
-    { "", "None", "HMC5883", "AK8975", "FAKE", NULL }
-};
+static const char * const *sensorHardwareNames[] = {gyroNames, accNames, baroNames, magNames, rangefinderNames};
+
 #endif
 
 typedef struct {
@@ -362,6 +369,7 @@ static const char * const lookupTableBlackboxDevice[] = {
     "SERIAL", "SPIFLASH"
 };
 
+#ifdef SERIAL_RX
 static const char * const lookupTableSerialRX[] = {
     "SPEK1024",
     "SPEK2048",
@@ -372,6 +380,21 @@ static const char * const lookupTableSerialRX[] = {
     "XB-B-RJ01",
     "IBUS"
 };
+#endif
+
+#ifdef USE_RX_NRF24
+// sync with nrf24_protocol_t
+static const char * const lookupTableNRF24RX[] = {
+    "V202_250K",
+    "V202_1M",
+    "SYMA_X",
+    "SYMA_X5C",
+    "CX10",
+    "CX10A",
+    "H8_3D",
+    "H8_3D_DEV",
+};
+#endif
 
 static const char * const lookupTableGyroLpf[] = {
     "256HZ",
@@ -416,7 +439,12 @@ typedef enum {
     TABLE_CURRENT_SENSOR,
     TABLE_GIMBAL_MODE,
     TABLE_PID_CONTROLLER,
+#ifdef SERIAL_RX
     TABLE_SERIAL_RX,
+#endif
+#ifdef USE_RX_NRF24
+    TABLE_NRF24_RX,
+#endif
     TABLE_GYRO_LPF,
     TABLE_FAILSAFE_PROCEDURE,
 #ifdef NAV
@@ -440,8 +468,13 @@ static const lookupTableEntry_t lookupTables[] = {
     { lookupTableCurrentSensor, sizeof(lookupTableCurrentSensor) / sizeof(char *) },
     { lookupTableGimbalMode, sizeof(lookupTableGimbalMode) / sizeof(char *) },
     { lookupTablePidController, sizeof(lookupTablePidController) / sizeof(char *) },
+#ifdef SERIAL_RX
     { lookupTableSerialRX, sizeof(lookupTableSerialRX) / sizeof(char *) },
-    { lookupTableGyroLpf, sizeof(lookupTableGyroLpf) / sizeof(char *) },
+#endif
+#ifdef USE_RX_NRF24
+    { lookupTableNRF24RX, sizeof(lookupTableNRF24RX) / sizeof(char *) },
+#endif
+     { lookupTableGyroLpf, sizeof(lookupTableGyroLpf) / sizeof(char *) },
     { lookupTableFailsafeProcedure, sizeof(lookupTableFailsafeProcedure) / sizeof(char *) },
 #ifdef NAV
     { lookupTableNavControlMode, sizeof(lookupTableNavControlMode) / sizeof(char *) },
@@ -602,7 +635,7 @@ const clivalue_t valueTable[] = {
 
     { "nav_mc_bank_angle",          VAR_UINT8  | MASTER_VALUE, &masterConfig.navConfig.mc_max_bank_angle, .config.minmax = { 15,  45 }, 0 },
     { "nav_mc_hover_thr",           VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.mc_hover_throttle, .config.minmax = { 1000,  2000 }, 0 },
-    { "nav_mc_min_fly_thr",         VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.mc_min_fly_throttle, .config.minmax = { 1000,  2000 }, 0 },
+    { "nav_mc_auto_disarm_delay",   VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.mc_auto_disarm_delay, .config.minmax = { 100,  10000 }, 0 },
 
     { "nav_fw_cruise_thr",          VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.fw_cruise_throttle, .config.minmax = { 1000,  2000 }, 0 },
     { "nav_fw_min_thr",             VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.fw_min_throttle, .config.minmax = { 1000,  2000 }, 0 },
@@ -615,7 +648,12 @@ const clivalue_t valueTable[] = {
     { "nav_fw_loiter_radius",       VAR_UINT16 | MASTER_VALUE, &masterConfig.navConfig.fw_loiter_radius, .config.minmax = { 0,  10000 }, 0 },
 #endif
 
+#ifdef SERIAL_RX
     { "serialrx_provider",          VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP,  &masterConfig.rxConfig.serialrx_provider, .config.lookup = { TABLE_SERIAL_RX }, 0 },
+#endif
+#ifdef USE_RX_NRF24
+    { "nrf24rx_protocol",           VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP,  &masterConfig.rxConfig.nrf24rx_protocol, .config.lookup = { TABLE_NRF24_RX }, 0 },
+#endif
     { "spektrum_sat_bind",          VAR_UINT8  | MASTER_VALUE,  &masterConfig.rxConfig.spektrum_sat_bind, .config.minmax = { SPEKTRUM_SAT_BIND_DISABLED,  SPEKTRUM_SAT_BIND_MAX}, 0 },
 
     { "telemetry_switch",           VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP,  &masterConfig.telemetryConfig.telemetry_switch, .config.lookup = { TABLE_OFF_ON }, 0 },
@@ -670,14 +708,19 @@ const clivalue_t valueTable[] = {
 #endif
 
     { "default_rate_profile",       VAR_UINT8  | PROFILE_VALUE , &masterConfig.profile[0].defaultRateProfileIndex, .config.minmax = { 0,  MAX_CONTROL_RATE_PROFILE_COUNT - 1 }, 0 },
-    { "rc_rate",                    VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].rcRate8, .config.minmax = { 0,  250 }, 0 },
     { "rc_expo",                    VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].rcExpo8, .config.minmax = { 0,  100 }, 0 },
     { "rc_yaw_expo",                VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].rcYawExpo8, .config.minmax = { 0,  100 }, 0 },
     { "thr_mid",                    VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].thrMid8, .config.minmax = { 0,  100 }, 0 },
     { "thr_expo",                   VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].thrExpo8, .config.minmax = { 0,  100 }, 0 },
-    { "roll_rate",                  VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].rates[FD_ROLL], .config.minmax = { 0,  CONTROL_RATE_CONFIG_ROLL_PITCH_RATE_MAX }, 0 },
-    { "pitch_rate",                 VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].rates[FD_PITCH], .config.minmax = { 0,  CONTROL_RATE_CONFIG_ROLL_PITCH_RATE_MAX }, 0 },
-    { "yaw_rate",                   VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].rates[FD_YAW], .config.minmax = { 0,  CONTROL_RATE_CONFIG_YAW_RATE_MAX }, 0 },
+
+    /*
+    New rates are in dps/10. That means, Rate of 20 means 200dps of rotation speed on given axis.
+    Rate 180 (1800dps) is max. value gyro can measure reliably    
+    */
+    { "roll_rate",                  VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].rates[FD_ROLL], .config.minmax = { CONTROL_RATE_CONFIG_ROLL_PITCH_RATE_MIN,  CONTROL_RATE_CONFIG_ROLL_PITCH_RATE_MAX }, 0 },
+    { "pitch_rate",                 VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].rates[FD_PITCH], .config.minmax = { CONTROL_RATE_CONFIG_ROLL_PITCH_RATE_MIN,  CONTROL_RATE_CONFIG_ROLL_PITCH_RATE_MAX }, 0 },
+    { "yaw_rate",                   VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].rates[FD_YAW], .config.minmax = { CONTROL_RATE_CONFIG_YAW_RATE_MIN,  CONTROL_RATE_CONFIG_YAW_RATE_MAX }, 0 },
+
     { "tpa_rate",                   VAR_UINT8  | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].dynThrPID, .config.minmax = { 0,  CONTROL_RATE_CONFIG_TPA_MAX}, 0 },
     { "tpa_breakpoint",             VAR_UINT16 | CONTROL_RATE_VALUE, &masterConfig.controlRateProfiles[0].tpa_breakpoint, .config.minmax = { PWM_RANGE_MIN,  PWM_RANGE_MAX}, 0 },
 
@@ -1690,7 +1733,7 @@ static void cliDump(char *cmdline)
                 cliWrite(' ');
             cliPrintf("%s\r\n", ftoa(yaw, buf));
         }
-
+#ifdef USE_SERVOS
         // print custom servo mixer if exists
         cliPrintf("smix reset\r\n");
 
@@ -1710,8 +1753,8 @@ static void cliDump(char *cmdline)
                 masterConfig.customServoMixer[i].box
             );
         }
-
-#endif
+#endif // USE_SERVOS
+#endif // USE_QUAD_MIXER_ONLY
 
         cliPrint("\r\n\r\n# feature\r\n");
 
@@ -2482,21 +2525,15 @@ static void cliStatus(char *cmdline)
 
     cliPrintf("CPU Clock=%dMHz", (SystemCoreClock / 1000000));
 
-#ifndef CJMCU
-    uint8_t i;
-    uint32_t mask;
-    uint32_t detectedSensorsMask = sensorsMask();
+#if (FLASH_SIZE > 64)
+    const uint32_t detectedSensorsMask = sensorsMask();
 
-    for (i = 0; ; i++) {
+    for (int i = 0; i < SENSOR_INDEX_COUNT; i++) {
 
-        if (sensorTypeNames[i] == NULL)
-            break;
-
-        mask = (1 << i);
+        const uint32_t mask = (1 << i);
         if ((detectedSensorsMask & mask) && (mask & SENSOR_NAMES_MASK)) {
-            const char *sensorHardware;
-            uint8_t sensorHardwareIndex = detectedSensors[i];
-            sensorHardware = sensorHardwareNames[i][sensorHardwareIndex];
+            const int sensorHardwareIndex = detectedSensors[i];
+            const char *sensorHardware = sensorHardwareNames[i][sensorHardwareIndex];
 
             cliPrintf(", %s=%s", sensorTypeNames[i], sensorHardware);
 
@@ -2509,9 +2546,9 @@ static void cliStatus(char *cmdline)
     cliPrint("\r\n");
 
 #ifdef USE_I2C
-    uint16_t i2cErrorCounter = i2cGetErrorCounter();
+    const uint16_t i2cErrorCounter = i2cGetErrorCounter();
 #else
-    uint16_t i2cErrorCounter = 0;
+    const uint16_t i2cErrorCounter = 0;
 #endif
 
     cliPrintf("Cycle Time: %d, I2C Errors: %d, config size: %d\r\n", cycleTime, i2cErrorCounter, sizeof(master_t));

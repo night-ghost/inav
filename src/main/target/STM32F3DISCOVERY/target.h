@@ -19,21 +19,12 @@
 
 #define TARGET_BOARD_IDENTIFIER "SDF3" // STM Discovery F3
 
-#define LED0_GPIO   GPIOE
-#define LED0_PIN    Pin_8|Pin_12 // Blue LEDs - PE8/PE12
-#define LED0_PERIPHERAL RCC_AHBPeriph_GPIOE
+#define LED0                PE8 // Blue LEDs - PE8/PE12
 #define LED0_INVERTED
-#define LED1_GPIO   GPIOE
-#define LED1_PIN    Pin_10|Pin_14  // Orange LEDs - PE10/PE14
-#define LED1_PERIPHERAL RCC_AHBPeriph_GPIOE
+#define LED1                PE10  // Orange LEDs - PE10/PE14
 #define LED1_INVERTED
 
-#define BEEP_GPIO   GPIOE
-#define BEEP_PIN    Pin_9|Pin_13 // Red LEDs - PE9/PE13
-#define BEEP_PERIPHERAL RCC_AHBPeriph_GPIOE
-#define BEEPER_INVERTED
-
-
+#define BEEPER      PE9 // Red LEDs - PE9/PE13
 #define BEEPER_INVERTED
 
 #define USE_SPI
@@ -55,10 +46,6 @@
 #define MAG
 #define USE_MAG_HMC5883
 
-#define BEEPER
-#define LED0
-#define LED1
-
 #define USE_VCP
 #define USE_USART1
 #define USE_USART2
@@ -68,45 +55,25 @@
 #define I2C_DEVICE (I2CDEV_1)
 
 #define USE_ADC
-
-#define ADC_INSTANCE                ADC1
-#define ADC_AHB_PERIPHERAL          RCC_AHBPeriph_DMA1
-#define ADC_DMA_CHANNEL             DMA1_Channel1
-
-#define VBAT_ADC_GPIO               GPIOC
-#define VBAT_ADC_GPIO_PIN           GPIO_Pin_0
-#define VBAT_ADC_CHANNEL            ADC_Channel_6
-
-#define CURRENT_METER_ADC_GPIO      GPIOC
-#define CURRENT_METER_ADC_GPIO_PIN  GPIO_Pin_1
-#define CURRENT_METER_ADC_CHANNEL   ADC_Channel_7
-
-#define RSSI_ADC_GPIO               GPIOC
-#define RSSI_ADC_GPIO_PIN           GPIO_Pin_2
-#define RSSI_ADC_CHANNEL            ADC_Channel_8
-
-#define EXTERNAL1_ADC_GPIO          GPIOC
-#define EXTERNAL1_ADC_GPIO_PIN      GPIO_Pin_3
-#define EXTERNAL1_ADC_CHANNEL       ADC_Channel_9
-
-#define BLACKBOX
-
-#define GPS
-#define GPS_PROTO_NMEA
-#define GPS_PROTO_UBLOX
-#define GPS_PROTO_I2C_NAV
-#define GPS_PROTO_NAZA
+#define ADC_INSTANCE            ADC1
+#define VBAT_ADC_PIN            PC0
+#define CURRENT_METER_ADC_PIN   PC1
+#define RSSI_ADC_PIN            PC2
+#define EXTERNAL1_ADC_PIN       PC3
 
 #define LED_STRIP
 #define LED_STRIP_TIMER TIM16
-#define TELEMETRY
-#define TELEMETRY_FRSKY
-#define TELEMETRY_HOTT
-#define TELEMETRY_SMARTPORT
-#define TELEMETRY_LTM
-
-#define SERIAL_RX
-#define USE_SERVOS
-#define USE_CLI
 
 #define USE_SERIAL_4WAY_BLHELI_INTERFACE
+
+// IO - 303 in 100pin package
+#define TARGET_IO_PORTA 0xffff
+#define TARGET_IO_PORTB 0xffff
+#define TARGET_IO_PORTC 0xffff
+#define TARGET_IO_PORTD 0xffff
+#define TARGET_IO_PORTE 0xffff
+#define TARGET_IO_PORTF 0x00ff
+
+
+#define USED_TIMERS  (TIM_N(1) | TIM_N(2) | TIM_N(3) | TIM_N(4) | TIM_N(8) | TIM_N(16) | TIM_N(17))
+

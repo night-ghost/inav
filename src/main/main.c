@@ -17,12 +17,9 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "platform.h"
-
-#include "scheduler/scheduler.h"
 
 #include "common/axis.h"
 #include "common/color.h"
@@ -64,8 +61,9 @@
 #include "io/ledstrip.h"
 #include "io/display.h"
 
+#include "scheduler/scheduler.h"
+
 #include "sensors/sensors.h"
-#include "sensors/sonar.h"
 #include "sensors/barometer.h"
 #include "sensors/compass.h"
 #include "sensors/acceleration.h"
@@ -114,7 +112,7 @@ void mixerInit(mixerMode_e mixerMode, motorMixer_t *customMotorMixers, servoMixe
 #else
 void mixerInit(mixerMode_e mixerMode, motorMixer_t *customMotorMixers);
 #endif
-void mixerUsePWMIOConfiguration(pwmIOConfiguration_t *pwmIOConfiguration);
+void mixerUsePWMIOConfiguration(void);
 void rxInit(rxConfig_t *rxConfig, modeActivationCondition_t *modeActivationConditions);
 void gpsPreInit(gpsConfig_t *initialGpsConfig);
 void gpsInit(serialConfig_t *serialConfig, gpsConfig_t *initialGpsConfig);
@@ -122,8 +120,7 @@ void imuInit(void);
 void displayInit(rxConfig_t *intialRxConfig);
 void ledStripInit(ledConfig_t *ledConfigsToUse, hsvColor_t *colorsToUse);
 void spektrumBind(rxConfig_t *rxConfig);
-const sonarHardware_t *sonarGetHardwareConfiguration(batteryConfig_t *batteryConfig);
-void sonarInit(const sonarHardware_t *sonarHardware);
+const sonarHcsr04Hardware_t *sonarGetHardwareConfiguration(currentSensor_e currentSensor);
 
 #ifdef STM32F303xC
 // from system_stm32f30x.c
@@ -152,8 +149,8 @@ void flashLedsAndBeep(void)
         LED1_TOGGLE;
         LED0_TOGGLE;
         delay(25);
-    	if (!(getPreferedBeeperOffMask() & (1 << (BEEPER_SYSTEM_INIT - 1))))
-        	BEEP_ON;
+        if (!(getPreferedBeeperOffMask() & (1 << (BEEPER_SYSTEM_INIT - 1))))
+            BEEP_ON;
         delay(25);
         BEEP_OFF;
     }
@@ -163,9 +160,6 @@ void flashLedsAndBeep(void)
 
 void init(void)
 {
-    uint8_t i;
-    drv_pwm_config_t pwm_params;
-
     printfSupportInit();
 
     initEEPROM();
@@ -174,6 +168,9 @@ void init(void)
     readEEPROM();
 
     systemState |= SYSTEM_STATE_CONFIG_LOADED;
+
+    // initialize IO (needed for all IO operations)
+    IOInitGlobal();
 
 #ifdef STM32F303
     // start fpu
@@ -199,7 +196,11 @@ void init(void)
     // Latch active features to be used for feature() in the remainder of init().
     latchActiveFeatures();
 
-    ledInit();
+#ifdef ALIENFLIGHTF3
+    ledInit(hardwareRevision == AFF3_REV_1 ? false : true);
+#else
+    ledInit(false);
+#endif
 
 #ifdef SPEKTRUM_BIND
     if (feature(FEATURE_RX_SERIAL)) {
@@ -227,19 +228,20 @@ void init(void)
     mixerInit(masterConfig.mixerMode, masterConfig.customMotorMixer);
 #endif
 
+    drv_pwm_config_t pwm_params;
     memset(&pwm_params, 0, sizeof(pwm_params));
 
 #ifdef SONAR
-    const sonarHardware_t *sonarHardware = NULL;
-
+    sonarGPIOConfig_t sonarGPIOConfig;
     if (feature(FEATURE_SONAR)) {
-        sonarHardware = sonarGetHardwareConfiguration(&masterConfig.batteryConfig);
-        sonarGPIOConfig_t sonarGPIOConfig = {
-            .gpio = SONAR_GPIO,
-            .triggerPin = sonarHardware->echo_pin,
-            .echoPin = sonarHardware->trigger_pin,
-        };
-        pwm_params.sonarGPIOConfig = &sonarGPIOConfig;
+        const sonarHcsr04Hardware_t *sonarHardware = sonarGetHardwareConfiguration(masterConfig.batteryConfig.currentMeterType);
+        if (sonarHardware) {
+            sonarGPIOConfig.gpio = sonarHardware->echo_gpio;
+            sonarGPIOConfig.triggerPin = sonarHardware->echo_pin;
+            sonarGPIOConfig.echoPin = sonarHardware->trigger_pin;
+            pwm_params.sonarGPIOConfig = &sonarGPIOConfig;
+            pwm_params.useSonar = true;
+        }
     }
 #endif
 
@@ -263,12 +265,9 @@ void init(void)
     pwm_params.useLEDStrip = feature(FEATURE_LED_STRIP);
     pwm_params.usePPM = feature(FEATURE_RX_PPM);
     pwm_params.useSerialRx = feature(FEATURE_RX_SERIAL);
-#ifdef SONAR
-    pwm_params.useSonar = feature(FEATURE_SONAR);
-#endif
 
 #ifdef USE_SERVOS
-    pwm_params.useServos = isMixerUsingServos();
+    pwm_params.useServos = isServoOutputEnabled();
     pwm_params.useChannelForwarding = feature(FEATURE_CHANNEL_FORWARDING);
     pwm_params.servoCenterPulse = masterConfig.escAndServoConfig.servoCenterPulse;
     pwm_params.servoPwmRate = masterConfig.servo_pwm_rate;
@@ -282,12 +281,14 @@ void init(void)
     if (pwm_params.motorPwmRate > 500)
         pwm_params.idlePulse = 0; // brushed motors
 
+#ifndef SKIP_RX_PWM_PPM
     pwmRxInit(masterConfig.inputFilteringMode);
+#endif
 
     // pwmInit() needs to be called as soon as possible for ESC compatibility reasons
-    pwmIOConfiguration_t *pwmIOConfiguration = pwmInit(&pwm_params);
+    pwmInit(&pwm_params);
 
-    mixerUsePWMIOConfiguration(pwmIOConfiguration);
+    mixerUsePWMIOConfiguration();
 
     if (!feature(FEATURE_ONESHOT125))
         motorControlEnable = true;
@@ -296,21 +297,19 @@ void init(void)
 
 #ifdef BEEPER
     beeperConfig_t beeperConfig = {
-        .gpioPeripheral = BEEP_PERIPHERAL,
-        .gpioPin = BEEP_PIN,
-        .gpioPort = BEEP_GPIO,
+        .ioTag = IO_TAG(BEEPER),
 #ifdef BEEPER_INVERTED
-        .gpioMode = Mode_Out_PP,
+        .isOD = false,
         .isInverted = true
 #else
-        .gpioMode = Mode_Out_OD,
+        .isOD = true,
         .isInverted = false
 #endif
     };
 #ifdef NAZE
     if (hardwareRevision >= NAZE32_REV5) {
         // naze rev4 and below used opendrain to PNP for buzzer. Rev5 and above use PP to NPN.
-        beeperConfig.gpioMode = Mode_Out_PP;
+        beeperConfig.isOD = false;
         beeperConfig.isInverted = true;
     }
 #endif
@@ -346,6 +345,11 @@ void init(void)
     }
 #endif
 
+#if defined(FURYF3) && defined(SONAR) && defined(USE_SOFTSERIAL1)
+    if (feature(FEATURE_SONAR) && feature(FEATURE_SOFTSERIAL)) {
+        serialRemovePort(SERIAL_PORT_SOFTSERIAL1);
+    }
+#endif
 
 #ifdef USE_I2C
 #if defined(NAZE)
@@ -400,8 +404,12 @@ void init(void)
     // Set gyro sampling rate divider before initialization
     gyroSetSampleRate(masterConfig.looptime, masterConfig.gyro_lpf, masterConfig.gyroSync, masterConfig.gyroSyncDenominator);
 
-    if (!sensorsAutodetect(&masterConfig.sensorAlignmentConfig, masterConfig.gyro_lpf,
-        masterConfig.acc_hardware, masterConfig.mag_hardware, masterConfig.baro_hardware, currentProfile->mag_declination)) {
+    if (!sensorsAutodetect(&masterConfig.sensorAlignmentConfig,
+            masterConfig.gyro_lpf,
+            masterConfig.acc_hardware,
+            masterConfig.mag_hardware,
+            masterConfig.baro_hardware,
+            currentProfile->mag_declination)) {
 
         // if gyro was not detected due to whatever reason, we give up now.
         failureMode(FAILURE_MISSING_ACC);
@@ -411,7 +419,7 @@ void init(void)
 
     LED1_ON;
     LED0_OFF;
-    for (i = 0; i < 10; i++) {
+    for (int i = 0; i < 10; i++) {
         LED1_TOGGLE;
         LED0_TOGGLE;
         delay(25);
@@ -459,12 +467,6 @@ void init(void)
         );
 #endif
 
-#ifdef SONAR
-    if (feature(FEATURE_SONAR)) {
-        sonarInit(sonarHardware);
-    }
-#endif
-
 #ifdef LED_STRIP
     ledStripInit(masterConfig.ledConfigs, masterConfig.colors);
 
@@ -495,9 +497,6 @@ void init(void)
     initBlackbox();
 #endif
 
-    if (masterConfig.mixerMode == MIXER_GIMBAL) {
-        accSetCalibrationCycles(CALIBRATING_ACC_CYCLES);
-    }
     gyroSetCalibrationCycles(CALIBRATING_GYRO_CYCLES);
 #ifdef BARO
     baroSetCalibrationCycles(CALIBRATING_BARO_CYCLES);
@@ -549,7 +548,8 @@ void processLoopback(void) {
 #define processLoopback()
 #endif
 
-int main(void) {
+int main(void)
+{
     init();
 
     /* Setup scheduler */
@@ -586,7 +586,7 @@ int main(void) {
     setTaskEnabled(TASK_LEDSTRIP, feature(FEATURE_LED_STRIP));
 #endif
 
-    while (1) {
+    while (true) {
         scheduler();
         processLoopback();
     }

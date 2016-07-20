@@ -26,7 +26,8 @@
 #define GYRO_SATURATION_LIMIT   1800        // 1800dps
 #define PID_MAX_OUTPUT          1000
 #define YAW_P_LIMIT_MIN 100                 // Maximum value for yaw P limiter
-#define YAW_P_LIMIT_MAX 300                 // Maximum value for yaw P limiter
+#define YAW_P_LIMIT_MAX 500                 // Maximum value for yaw P limiter
+#define YAW_P_LIMIT_DEFAULT 300             // Default value for yaw P limiter
 
 #define MAG_HOLD_RATE_LIMIT_MIN 10
 #define MAG_HOLD_RATE_LIMIT_MAX 250
@@ -68,10 +69,13 @@ typedef struct pidProfile_s {
 extern int16_t axisPID[];
 extern int32_t axisPID_P[], axisPID_I[], axisPID_D[], axisPID_Setpoint[];
 
+void pidInit(void);
 void pidResetErrorAccumulators(void);
 void updatePIDCoefficients(const pidProfile_t *pidProfile, const controlRateConfig_t *controlRateConfig, const rxConfig_t *rxConfig);
-int16_t pidAngleToRcCommand(float angleDeciDegrees);
 void pidController(const pidProfile_t *pidProfile, const controlRateConfig_t *controlRateConfig, const rxConfig_t *rxConfig);
+
+float pidRateToRcCommand(float rateDPS, uint8_t rate);
+int16_t pidAngleToRcCommand(float angleDeciDegrees, int16_t maxInclination);
 
 enum {
     MAG_HOLD_DISABLED = 0,

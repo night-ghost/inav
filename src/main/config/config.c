@@ -35,6 +35,7 @@
 #include "drivers/gpio.h"
 #include "drivers/timer.h"
 #include "drivers/pwm_rx.h"
+#include "drivers/rx_nrf24l01.h"
 #include "drivers/serial.h"
 
 #include "sensors/sensors.h"
@@ -55,6 +56,7 @@
 #include "io/gps.h"
 
 #include "rx/rx.h"
+#include "rx/nrf24.h"
 
 #include "blackbox/blackbox_io.h"
 
@@ -72,10 +74,21 @@
 #include "config/config_profile.h"
 #include "config/config_master.h"
 
+#ifndef DEFAULT_RX_FEATURE
+#define DEFAULT_RX_FEATURE FEATURE_RX_PARALLEL_PWM
+#endif
+
 #define BRUSHED_MOTORS_PWM_RATE 16000
 #define BRUSHLESS_MOTORS_PWM_RATE 400
 
 void useRcControlsConfig(modeActivationCondition_t *modeActivationConditions, escAndServoConfig_t *escAndServoConfigToUse, pidProfile_t *pidProfileToUse);
+
+#ifndef DEFAULT_RX_FEATURE
+#define DEFAULT_RX_FEATURE FEATURE_RX_PARALLEL_PWM
+#endif
+#ifndef NRF24_DEFAULT_PROTOCOL
+#define NRF24_DEFAULT_PROTOCOL 0
+#endif
 
 #if !defined(FLASH_SIZE)
 #error "Flash size not defined for target. (specify in KB)"
@@ -94,6 +107,15 @@ void useRcControlsConfig(modeActivationCondition_t *modeActivationConditions, es
     #ifdef STM32F10X_HD
         #define FLASH_PAGE_SIZE                 ((uint16_t)0x800)
     #endif
+
+    #if defined(STM32F40_41xxx)
+        #define FLASH_PAGE_SIZE                 ((uint32_t)0x20000)
+    #endif
+
+    #if defined (STM32F411xE)
+        #define FLASH_PAGE_SIZE                 ((uint32_t)0x20000)
+    #endif
+
 #endif
 
 #if !defined(FLASH_SIZE) && !defined(FLASH_PAGE_COUNT)
@@ -107,7 +129,13 @@ void useRcControlsConfig(modeActivationCondition_t *modeActivationConditions, es
 #endif
 
 #if defined(FLASH_SIZE)
+#if defined(STM32F40_41xxx)
+#define FLASH_PAGE_COUNT 4 // just to make calculations work
+#elif defined (STM32F411xE)
+#define FLASH_PAGE_COUNT 4 // just to make calculations work
+#else
 #define FLASH_PAGE_COUNT ((FLASH_SIZE * 0x400) / FLASH_PAGE_SIZE)
+#endif
 #endif
 
 #if !defined(FLASH_PAGE_SIZE)
@@ -125,7 +153,15 @@ void useRcControlsConfig(modeActivationCondition_t *modeActivationConditions, es
 #endif
 
 // use the last flash pages for storage
+#ifdef CUSTOM_FLASH_MEMORY_ADDRESS
+size_t custom_flash_memory_address = 0;
+#define CONFIG_START_FLASH_ADDRESS (custom_flash_memory_address)
+#else
+// use the last flash pages for storage
+#ifndef CONFIG_START_FLASH_ADDRESS 
 #define CONFIG_START_FLASH_ADDRESS (0x08000000 + (uint32_t)((FLASH_PAGE_SIZE * FLASH_PAGE_COUNT) - FLASH_TO_RESERVE_FOR_CONFIG))
+#endif
+#endif
 
 master_t masterConfig;                 // master config struct with data independent from profiles
 profile_t *currentProfile;
@@ -149,14 +185,14 @@ static void resetAccelerometerTrims(flightDynamicsTrims_t * accZero, flightDynam
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
-    pidProfile->P8[ROLL] = 30;
-    pidProfile->I8[ROLL] = 20;
-    pidProfile->D8[ROLL] = 70;
-    pidProfile->P8[PITCH] = 30;
-    pidProfile->I8[PITCH] = 20;
-    pidProfile->D8[PITCH] = 70;
-    pidProfile->P8[YAW] = 100;      // 2.5 * 40
-    pidProfile->I8[YAW] = 40;       // 4.0 * 10
+    pidProfile->P8[ROLL] = 40;
+    pidProfile->I8[ROLL] = 30;
+    pidProfile->D8[ROLL] = 23;
+    pidProfile->P8[PITCH] = 40;
+    pidProfile->I8[PITCH] = 30;
+    pidProfile->D8[PITCH] = 23;
+    pidProfile->P8[YAW] = 85;
+    pidProfile->I8[YAW] = 45;
     pidProfile->D8[YAW] = 0;        // not used
     pidProfile->P8[PIDALT] = 50;    // NAV_POS_Z_P * 100
     pidProfile->I8[PIDALT] = 0;     // not used
@@ -170,7 +206,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
     pidProfile->P8[PIDNAVR] = 10;   // FW_NAV_P * 100
     pidProfile->I8[PIDNAVR] = 5;    // FW_NAV_I * 100
     pidProfile->D8[PIDNAVR] = 8;    // FW_NAV_D * 100
-    pidProfile->P8[PIDLEVEL] = 120; // Self-level strength * 40 (4 * 40)
+    pidProfile->P8[PIDLEVEL] = 20;  // Self-level strength
     pidProfile->I8[PIDLEVEL] = 15;  // Self-leveing low-pass frequency (0 - disabled)
     pidProfile->D8[PIDLEVEL] = 75;  // 75% horizon strength
     pidProfile->P8[PIDMAG] = 60;
@@ -183,7 +219,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
     pidProfile->dterm_lpf_hz = 40;
     pidProfile->yaw_lpf_hz = 30;
 
-    pidProfile->yaw_p_limit = YAW_P_LIMIT_MAX;
+    pidProfile->yaw_p_limit = YAW_P_LIMIT_DEFAULT;
     pidProfile->mag_hold_rate_limit = MAG_HOLD_RATE_LIMIT_DEFAULT;
 
     pidProfile->max_angle_inclination[FD_ROLL] = 300;    // 30 degrees
@@ -194,7 +230,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
 void resetNavConfig(navConfig_t * navConfig)
 {
     // Navigation flags
-    navConfig->flags.use_thr_mid_for_althold = 1;
+    navConfig->flags.use_thr_mid_for_althold = 0;
     navConfig->flags.extra_arming_safety = 1;
     navConfig->flags.user_control_mode = NAV_GPS_ATTI;
     navConfig->flags.rth_alt_control_style = NAV_RTH_AT_LEAST_ALT;
@@ -208,7 +244,7 @@ void resetNavConfig(navConfig_t * navConfig)
     navConfig->inav.gps_min_sats = 6;
     navConfig->inav.gps_delay_ms = 200;
     navConfig->inav.accz_unarmed_cal = 1;
-    navConfig->inav.use_gps_velned = 0;         // "Disabled" is mandatory with gps_nav_model = LOW_G
+    navConfig->inav.use_gps_velned = 1;         // "Disabled" is mandatory with gps_dyn_model = Pedestrian
 
     navConfig->inav.w_z_baro_p = 0.35f;
 
@@ -242,7 +278,7 @@ void resetNavConfig(navConfig_t * navConfig)
     // MC-specific
     navConfig->mc_max_bank_angle = 30;      // 30 deg
     navConfig->mc_hover_throttle = 1500;
-    navConfig->mc_min_fly_throttle = 1200;
+    navConfig->mc_auto_disarm_delay = 2000;
 
     // Fixed wing
     navConfig->fw_max_bank_angle = 20;      // 30 deg
@@ -349,7 +385,6 @@ void resetSerialConfig(serialConfig_t *serialConfig)
 }
 
 static void resetControlRateConfig(controlRateConfig_t *controlRateConfig) {
-    controlRateConfig->rcRate8 = 90;
     controlRateConfig->rcExpo8 = 70;
     controlRateConfig->thrMid8 = 50;
     controlRateConfig->thrExpo8 = 0;
@@ -358,7 +393,11 @@ static void resetControlRateConfig(controlRateConfig_t *controlRateConfig) {
     controlRateConfig->tpa_breakpoint = 1500;
 
     for (uint8_t axis = 0; axis < FLIGHT_DYNAMICS_INDEX_COUNT; axis++) {
-        controlRateConfig->rates[axis] = 0;
+        if (axis == FD_YAW) {
+            controlRateConfig->rates[axis] = CONTROL_RATE_CONFIG_YAW_RATE_DEFAULT;
+        } else {
+            controlRateConfig->rates[axis] = CONTROL_RATE_CONFIG_ROLL_PITCH_RATE_DEFAULT;
+        }
     }
 
 }
@@ -424,8 +463,9 @@ static void resetConf(void)
     masterConfig.mixerMode = MIXER_QUADX;
     featureClearAll();
     persistentFlagClearAll();
-#if defined(CJMCU) || defined(SPARKY) || defined(COLIBRI_RACE) || defined(MOTOLAB) || defined(LUX_RACE)
-    featureSet(FEATURE_RX_PPM);
+    featureSet(DEFAULT_RX_FEATURE | FEATURE_FAILSAFE);
+#ifdef DEFAULT_FEATURES
+    featureSet(DEFAULT_FEATURES);
 #endif
 
 #ifdef BOARD_HAS_VOLTAGE_DIVIDER
@@ -433,8 +473,6 @@ static void resetConf(void)
     // the user may see incorrect readings and unexpected issues with pin mappings may occur.
     featureSet(FEATURE_VBAT);
 #endif
-
-    featureSet(FEATURE_FAILSAFE);
 
     // global settings
     masterConfig.current_profile_index = 0;     // default profile
@@ -462,6 +500,7 @@ static void resetConf(void)
     resetTelemetryConfig(&masterConfig.telemetryConfig);
 
     masterConfig.rxConfig.serialrx_provider = 0;
+    masterConfig.rxConfig.nrf24rx_protocol = NRF24_DEFAULT_PROTOCOL;
     masterConfig.rxConfig.spektrum_sat_bind = 0;
     masterConfig.rxConfig.midrc = 1500;
     masterConfig.rxConfig.mincheck = 1100;
@@ -504,7 +543,7 @@ static void resetConf(void)
 #ifdef GPS
     // gps/nav stuff
     masterConfig.gpsConfig.provider = GPS_UBLOX;
-    masterConfig.gpsConfig.sbasMode = SBAS_AUTO;
+    masterConfig.gpsConfig.sbasMode = SBAS_NONE;
     masterConfig.gpsConfig.autoConfig = GPS_AUTOCONFIG_ON;
     masterConfig.gpsConfig.autoBaud = GPS_AUTOBAUD_ON;
     masterConfig.gpsConfig.dynModel = GPS_DYNMODEL_AIR_1G;
@@ -603,11 +642,9 @@ static void resetConf(void)
     featureSet(FEATURE_FAILSAFE);
 #endif
 
-    // alternative defaults settings for ALIENWIIF1 and ALIENWIIF3 targets
-#ifdef ALIENWII32
-    featureSet(FEATURE_RX_SERIAL);
-    featureSet(FEATURE_MOTOR_STOP);
-#ifdef ALIENWIIF3
+    // alternative defaults settings for ALIENFLIGHTF1 and ALIENFLIGHTF3 targets
+#ifdef ALIENFLIGHTF1
+#ifdef ALIENFLIGHTF3
     masterConfig.serialConfig.portConfigs[2].functionMask = FUNCTION_RX_SERIAL;
     masterConfig.batteryConfig.vbatscale = 20;
 #else
@@ -623,10 +660,9 @@ static void resetConf(void)
     currentProfile->pidProfile.P8[PITCH] = 36;
     masterConfig.failsafeConfig.failsafe_delay = 2;
     masterConfig.failsafeConfig.failsafe_off_delay = 0;
-    currentControlRateProfile->rcRate8 = 130;
-    currentControlRateProfile->rates[FD_PITCH] = 20;
-    currentControlRateProfile->rates[FD_ROLL] = 20;
-    currentControlRateProfile->rates[FD_YAW] = 100;
+    currentControlRateProfile->rates[FD_PITCH] = CONTROL_RATE_CONFIG_ROLL_PITCH_RATE_DEFAULT;
+    currentControlRateProfile->rates[FD_ROLL] = CONTROL_RATE_CONFIG_ROLL_PITCH_RATE_DEFAULT;
+    currentControlRateProfile->rates[FD_YAW] = CONTROL_RATE_CONFIG_YAW_RATE_DEFAULT;
     parseRcChannels("TAER1234", &masterConfig.rxConfig);
 
     //  { 1.0f, -0.414178f,  1.0f, -1.0f },          // REAR_R
@@ -727,8 +763,7 @@ static bool isEEPROMContentValid(void)
 
 void activateControlRateConfig(void)
 {
-    generatePitchRollCurve(currentControlRateProfile);
-    generateYawCurve(currentControlRateProfile);
+    generateRcCurves(currentControlRateProfile);
     generateThrottleCurve(currentControlRateProfile, &masterConfig.escAndServoConfig);
 }
 
@@ -777,6 +812,8 @@ void activateConfig(void)
 
     imuConfigure(&imuRuntimeConfig, &currentProfile->pidProfile);
 
+    pidInit();
+
 #ifdef NAV
     navigationUseConfig(&masterConfig.navConfig);
     navigationUsePIDs(&currentProfile->pidProfile);
@@ -791,33 +828,48 @@ void activateConfig(void)
 #endif
 }
 
-void validateAndFixConfig(void)
+static void validateAndFixConfig(void)
 {
-    if (!(featureConfigured(FEATURE_RX_PARALLEL_PWM) || featureConfigured(FEATURE_RX_PPM) || featureConfigured(FEATURE_RX_SERIAL) || featureConfigured(FEATURE_RX_MSP))) {
-        featureSet(FEATURE_RX_PARALLEL_PWM); // Consider changing the default to PPM
-    }
+    if (!(featureConfigured(FEATURE_RX_PARALLEL_PWM) || featureConfigured(FEATURE_RX_PPM) || featureConfigured(FEATURE_RX_SERIAL) || featureConfigured(FEATURE_RX_MSP) || featureConfigured(FEATURE_RX_NRF24))) {
+         featureSet(DEFAULT_RX_FEATURE);
+     }
 
-    if (featureConfigured(FEATURE_RX_PPM)) {
-        featureClear(FEATURE_RX_PARALLEL_PWM);
-    }
+     if (featureConfigured(FEATURE_RX_PPM)) {
+         featureClear(FEATURE_RX_SERIAL | FEATURE_RX_PARALLEL_PWM | FEATURE_RX_MSP | FEATURE_RX_NRF24);
+     }
 
-    if (featureConfigured(FEATURE_RX_MSP)) {
-        featureClear(FEATURE_RX_SERIAL);
-        featureClear(FEATURE_RX_PARALLEL_PWM);
-        featureClear(FEATURE_RX_PPM);
-    }
+     if (featureConfigured(FEATURE_RX_MSP)) {
+         featureClear(FEATURE_RX_SERIAL | FEATURE_RX_PARALLEL_PWM | FEATURE_RX_PPM | FEATURE_RX_NRF24);
+     }
 
-    if (featureConfigured(FEATURE_RX_SERIAL)) {
-        featureClear(FEATURE_RX_PARALLEL_PWM);
-        featureClear(FEATURE_RX_PPM);
-    }
+     if (featureConfigured(FEATURE_RX_SERIAL)) {
+         featureClear(FEATURE_RX_PARALLEL_PWM | FEATURE_RX_MSP | FEATURE_RX_PPM | FEATURE_RX_NRF24);
+     }
+
+     if (featureConfigured(FEATURE_RX_NRF24)) {
+         featureClear(FEATURE_RX_SERIAL | FEATURE_RX_PARALLEL_PWM | FEATURE_RX_PPM | FEATURE_RX_MSP);
+     }
 
 #if defined(NAV)
     // Ensure sane values of navConfig settings
     validateNavConfig(&masterConfig.navConfig);
 #endif
 
+    if (featureConfigured(FEATURE_SOFTSPI)) {
+        featureClear(FEATURE_RX_PPM | FEATURE_RX_PARALLEL_PWM | FEATURE_SOFTSERIAL | FEATURE_VBAT);
+#if defined(STM32F10X)
+        featureClear(FEATURE_LED_STRIP);
+        // rssi adc needs the same ports
+        featureClear(FEATURE_RSSI_ADC);
+        // current meter needs the same ports
+        if (masterConfig.batteryConfig.currentMeterType == CURRENT_SENSOR_ADC) {
+            featureClear(FEATURE_CURRENT_METER);
+        }
+#endif
+    }
+
     if (featureConfigured(FEATURE_RX_PARALLEL_PWM)) {
+         featureClear(FEATURE_RX_SERIAL | FEATURE_RX_MSP | FEATURE_RX_PPM | FEATURE_RX_NRF24);
 #if defined(STM32F10X)
         // rssi adc needs the same ports
         featureClear(FEATURE_RSSI_ADC);
@@ -825,6 +877,19 @@ void validateAndFixConfig(void)
         if (masterConfig.batteryConfig.currentMeterType == CURRENT_SENSOR_ADC) {
             featureClear(FEATURE_CURRENT_METER);
         }
+
+#if defined(CC3D)
+        // There is a timer clash between PWM RX pins and motor output pins - this forces us to have same timer tick rate for these timers
+        // which is only possible when using brushless motors w/o oneshot (timer tick rate is PWM_TIMER_MHZ)
+
+        // On CC3D OneShot is incompatible with PWM RX
+        featureClear(FEATURE_ONESHOT125);
+
+        // Brushed motors on CC3D are not possible when using PWM RX
+        if (masterConfig.motor_pwm_rate > BRUSHLESS_MOTORS_PWM_RATE) {
+            masterConfig.motor_pwm_rate = BRUSHLESS_MOTORS_PWM_RATE;
+        }
+#endif
 #endif
 
 #if defined(STM32F10X) || defined(CHEBUZZ) || defined(STM32F3DISCOVERY)
@@ -886,11 +951,24 @@ void validateAndFixConfig(void)
     masterConfig.telemetryConfig.telemetry_inversion = 1;
 #endif
 
-#if defined(CC3D) && defined(SONAR) && defined(USE_SOFTSERIAL1)
+#if defined(CC3D)
+#if defined(CC3D_PPM1)
+#if defined(SONAR) && defined(USE_SOFTSERIAL1)
     if (feature(FEATURE_SONAR) && feature(FEATURE_SOFTSERIAL)) {
         featureClear(FEATURE_SONAR);
     }
 #endif
+#else
+#if defined(SONAR) && defined(USE_SOFTSERIAL1) && defined(RSSI_ADC_GPIO)
+    // shared pin
+    if ((featureConfigured(FEATURE_SONAR) + featureConfigured(FEATURE_SOFTSERIAL) + featureConfigured(FEATURE_RSSI_ADC)) > 1) {
+       featureClear(FEATURE_SONAR);
+       featureClear(FEATURE_SOFTSERIAL);
+       featureClear(FEATURE_RSSI_ADC);
+    }
+#endif
+#endif // CC3D_PPM1
+#endif // CC3D
 
 #if defined(COLIBRI_RACE)
     masterConfig.serialConfig.portConfigs[0].functionMask = FUNCTION_MSP;

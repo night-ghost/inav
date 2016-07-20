@@ -19,27 +19,21 @@
 
 #define TARGET_BOARD_IDENTIFIER "CLBR"
 
-#define LED0_GPIO   GPIOC
-#define LED0_PIN    Pin_15
-#define LED0_PERIPHERAL RCC_AHBPeriph_GPIOC
+#define LED0                PC15
+#define LED1                PC14
+#define LED2                PC13
 
-#define LED1_GPIO   GPIOC
-#define LED1_PIN    Pin_14
-#define LED1_PERIPHERAL RCC_AHBPeriph_GPIOC
-
-#define LED2_GPIO   GPIOC
-#define LED2_PIN    Pin_13
-#define LED2_PERIPHERAL RCC_AHBPeriph_GPIOC
-
-#define BEEP_GPIO   GPIOB
-#define BEEP_PIN    Pin_13
-#define BEEP_PERIPHERAL RCC_AHBPeriph_GPIOB
+#define BEEPER              PB13
 #define BEEPER_INVERTED
 
 #define MPU6500_CS_GPIO_CLK_PERIPHERAL   RCC_AHBPeriph_GPIOA
 #define MPU6500_CS_GPIO                  GPIOA
 #define MPU6500_CS_PIN                   GPIO_Pin_4
 #define MPU6500_SPI_INSTANCE             SPI1
+
+#define MPU6000_CS_GPIO                  GPIOA
+#define MPU6000_CS_PIN                   GPIO_Pin_4
+#define MPU6000_SPI_INSTANCE             SPI1
 
 #define USE_SPI
 #define USE_SPI_DEVICE_1
@@ -73,11 +67,6 @@
 #define MAG
 #define USE_MAG_HMC5883
 #define USE_MAG_AK8975
-
-#define BEEPER
-#define LED0
-#define LED1
-#define LED2
 
 #define USE_VCP
 #define USE_USART1
@@ -121,37 +110,14 @@
 #define I2C2_SDA_CLK_SOURCE  RCC_AHBPeriph_GPIOA
 
 #define USE_ADC
+#define ADC_INSTANCE            ADC1
+#define VBAT_ADC_PIN            PC0
+#define CURRENT_METER_ADC_PIN   PC1
+#define RSSI_ADC_PIN            PC2
+#define EXTERNAL1_ADC_PIN       PC3
 
-#define ADC_INSTANCE                ADC1
-#define ADC_AHB_PERIPHERAL          RCC_AHBPeriph_DMA1
-#define ADC_DMA_CHANNEL             DMA1_Channel1
-
-#define VBAT_ADC_GPIO               GPIOC
-#define VBAT_ADC_GPIO_PIN           GPIO_Pin_0
-#define VBAT_ADC_CHANNEL            ADC_Channel_6
-
-#define CURRENT_METER_ADC_GPIO      GPIOC
-#define CURRENT_METER_ADC_GPIO_PIN  GPIO_Pin_1
-#define CURRENT_METER_ADC_CHANNEL   ADC_Channel_7
-
-#define RSSI_ADC_GPIO               GPIOC
-#define RSSI_ADC_GPIO_PIN           GPIO_Pin_2
-#define RSSI_ADC_CHANNEL            ADC_Channel_8
-
-#define EXTERNAL1_ADC_GPIO          GPIOC
-#define EXTERNAL1_ADC_GPIO_PIN      GPIO_Pin_3
-#define EXTERNAL1_ADC_CHANNEL       ADC_Channel_9
-
-#define BLACKBOX
-
-#define GPS
-#define GPS_PROTO_NMEA
-#define GPS_PROTO_UBLOX
-#define GPS_PROTO_I2C_NAV
-#define GPS_PROTO_NAZA
 
 #define LED_STRIP
-
 #define LED_STRIP_TIMER TIM16
 
 #define USE_LED_STRIP_ON_DMA1_CHANNEL3
@@ -170,15 +136,16 @@
 #define USE_MPU_DATA_READY_SIGNAL
 #define ENSURE_MPU_DATA_READY_IS_LOW
 
-#define TELEMETRY
-#define TELEMETRY_FRSKY
-#define TELEMETRY_HOTT
-#define TELEMETRY_SMARTPORT
-#define TELEMETRY_LTM
-
-#define SERIAL_RX
-#define USE_SERVOS
-#define USE_CLI
-
 #define USE_SERIAL_4WAY_BLHELI_INTERFACE
+
+#define DEFAULT_RX_FEATURE FEATURE_RX_PPM
+
+// IO - assuming 303 in 64pin package, TODO
+#define TARGET_IO_PORTA 0xffff
+#define TARGET_IO_PORTB 0xffff
+#define TARGET_IO_PORTC 0xffff
+#define TARGET_IO_PORTD (BIT(2))
+#define TARGET_IO_PORTF (BIT(0)|BIT(1)|BIT(4))
+
+#define USED_TIMERS  (TIM_N(1) | TIM_N(2) | TIM_N(3) | TIM_N(15))
 
