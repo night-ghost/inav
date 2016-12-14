@@ -15,19 +15,16 @@
  * along with Cleanflight.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 #include "platform.h"
-
-#include "build_config.h"
 
 #include "gpio.h"
 #include "light_led.h"
 #include "sound_beeper.h"
 #include "nvic.h"
+#include "build/atomic.h"
 
 #include "system.h"
 
@@ -35,12 +32,7 @@
 #define EXTI_CALLBACK_HANDLER_COUNT 1
 #endif
 
-typedef struct extiCallbackHandlerConfig_s {
-    IRQn_Type irqn;
-    extiCallbackHandlerFunc* fn;
-} extiCallbackHandlerConfig_t;
-
-static extiCallbackHandlerConfig_t extiHandlerConfigs[EXTI_CALLBACK_HANDLER_COUNT];
+extiCallbackHandlerConfig_t extiHandlerConfigs[EXTI_CALLBACK_HANDLER_COUNT];
 
 void registerExtiCallbackHandler(IRQn_Type irqn, extiCallbackHandlerFunc *fn)
 {
@@ -55,56 +47,14 @@ void registerExtiCallbackHandler(IRQn_Type irqn, extiCallbackHandlerFunc *fn)
     failureMode(FAILURE_DEVELOPER); // EXTI_CALLBACK_HANDLER_COUNT is too low for the amount of handlers required.
 }
 
-void unregisterExtiCallbackHandler(IRQn_Type irqn, extiCallbackHandlerFunc *fn)
-{
-    for (int index = 0; index < EXTI_CALLBACK_HANDLER_COUNT; index++) {
-        extiCallbackHandlerConfig_t *candidate = &extiHandlerConfigs[index];
-        if (candidate->fn == fn && candidate->irqn == irqn) {
-            candidate->fn = NULL;
-            candidate->irqn = 0;
-            return;
-        }
-    }
-}
-
-static void extiHandler(IRQn_Type irqn)
-{
-    for (int index = 0; index < EXTI_CALLBACK_HANDLER_COUNT; index++) {
-        extiCallbackHandlerConfig_t *candidate = &extiHandlerConfigs[index];
-        if (candidate->fn && candidate->irqn == irqn) {
-            candidate->fn();
-        }
-    }
-
-}
-
-void EXTI15_10_IRQHandler(void)
-{
-    extiHandler(EXTI15_10_IRQn);
-}
-
-#if defined(CC3D) || defined(FURYF3)
-void EXTI3_IRQHandler(void)
-{
-    extiHandler(EXTI3_IRQn);
-}
-#endif
-
-#if defined(COLIBRI_RACE) || defined(LUX_RACE)
-void EXTI9_5_IRQHandler(void)
-{
-    extiHandler(EXTI9_5_IRQn);
-}
-#endif
-
 // cycles per microsecond
-static uint32_t usTicks = 0;
+static timeUs_t usTicks = 0;
 // current uptime for 1kHz systick timer. will rollover after 49 days. hopefully we won't care.
-static volatile uint32_t sysTickUptime = 0;
+static volatile timeMs_t sysTickUptime = 0;
 // cached value of RCC->CSR
 uint32_t cachedRccCsrValue;
 
-static void cycleCounterInit(void)
+void cycleCounterInit(void)
 {
     RCC_ClocksTypeDef clocks;
     RCC_GetClocksFreq(&clocks);
@@ -112,19 +62,60 @@ static void cycleCounterInit(void)
 }
 
 // SysTick
+
+static volatile int sysTickPending = 0;
+
 void SysTick_Handler(void)
 {
-    sysTickUptime++;
+    ATOMIC_BLOCK(NVIC_PRIO_MAX) {
+        sysTickUptime++;
+        sysTickPending = 0;
+        (void)(SysTick->CTRL);
+    }
 }
 
 // Return system uptime in microseconds (rollover in 70minutes)
-uint32_t micros(void)
+
+timeUs_t microsISR(void)
+{
+    register uint32_t ms, pending, cycle_cnt;
+
+    ATOMIC_BLOCK(NVIC_PRIO_MAX) {
+        cycle_cnt = SysTick->VAL;
+
+        if (SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk) {
+            // Update pending.
+            // Record it for multiple calls within the same rollover period
+            // (Will be cleared when serviced).
+            // Note that multiple rollovers are not considered.
+
+            sysTickPending = 1;
+
+            // Read VAL again to ensure the value is read after the rollover.
+
+            cycle_cnt = SysTick->VAL;
+        }
+
+        ms = sysTickUptime;
+        pending = sysTickPending;
+    }
+
+    return ((ms + pending) * 1000) + (usTicks * 1000 - cycle_cnt) / usTicks;
+}
+
+timeUs_t micros(void)
 {
     register uint32_t ms, cycle_cnt;
+
+    // Call microsISR() in interrupt and elevated (non-zero) BASEPRI context
+
+    if ((SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) || (__get_BASEPRI())) {
+        return microsISR();
+    }
+
     do {
         ms = sysTickUptime;
         cycle_cnt = SysTick->VAL;
-
         /*
          * If the SysTick timer expired during the previous instruction, we need to give it a little time for that
          * interrupt to be delivered before we can recheck sysTickUptime:
@@ -135,73 +126,26 @@ uint32_t micros(void)
 }
 
 // Return system uptime in milliseconds (rollover in 49 days)
-uint32_t millis(void)
+timeMs_t millis(void)
 {
     return sysTickUptime;
 }
 
-void systemInit(void)
-{
-#ifdef CC3D
-    /* Accounts for OP Bootloader, set the Vector Table base address as specified in .ld file */
-    extern void *isr_vector_table_base;
-
-    NVIC_SetVectorTable((uint32_t)&isr_vector_table_base, 0x0);
-#endif
-    // Configure NVIC preempt/priority groups
-    NVIC_PriorityGroupConfig(NVIC_PRIORITY_GROUPING);
-
-#ifdef STM32F10X
-    // Turn on clocks for stuff we use
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO, ENABLE);
-#endif
-
-    // cache RCC->CSR value to use it in isMPUSoftreset() and others
-    cachedRccCsrValue = RCC->CSR;
-    RCC_ClearFlag();
-
-    enableGPIOPowerUsageAndNoiseReductions();
-
-#ifdef STM32F10X
-    // Set USART1 TX (PA9) to output and high state to prevent a rs232 break condition on reset.
-    // See issue https://github.com/cleanflight/cleanflight/issues/1433
-    gpio_config_t gpio;
-
-    gpio.mode = Mode_Out_PP;
-    gpio.speed = Speed_2MHz;
-    gpio.pin = Pin_9;
-    digitalHi(GPIOA, gpio.pin);
-    gpioInit(GPIOA, &gpio);
-
-    // Turn off JTAG port 'cause we're using the GPIO for leds
-#define AFIO_MAPR_SWJ_CFG_NO_JTAG_SW            (0x2 << 24)
-    AFIO->MAPR |= AFIO_MAPR_SWJ_CFG_NO_JTAG_SW;
-#endif
-
-    // Init cycle counter
-    cycleCounterInit();
-
-
-    memset(extiHandlerConfigs, 0x00, sizeof(extiHandlerConfigs));
-    // SysTick
-    SysTick_Config(SystemCoreClock / 1000);
-}
-
 #if 1
-void delayMicroseconds(uint32_t us)
+void delayMicroseconds(timeUs_t us)
 {
-    uint32_t now = micros();
+    timeUs_t now = micros();
     while (micros() - now < us);
 }
 #else
-void delayMicroseconds(uint32_t us)
+void delayMicroseconds(timeUs_t us)
 {
     uint32_t elapsed = 0;
     uint32_t lastCount = SysTick->VAL;
 
     for (;;) {
         register uint32_t current_count = SysTick->VAL;
-        uint32_t elapsed_us;
+        timeUs_t elapsed_us;
 
         // measure the time elapsed since the last time we checked
         elapsed += current_count - lastCount;
@@ -221,7 +165,7 @@ void delayMicroseconds(uint32_t us)
 }
 #endif
 
-void delay(uint32_t ms)
+void delay(timeMs_t ms)
 {
     while (ms--)
         delayMicroseconds(1000);

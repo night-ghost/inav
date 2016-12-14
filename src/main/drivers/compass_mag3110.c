@@ -20,9 +20,12 @@
 
 #include <math.h>
 
-#include "build_config.h"
-
 #include "platform.h"
+
+#ifdef USE_MAG_MAG3110
+
+#include "build/build_config.h"
+
 
 #include "common/axis.h"
 #include "common/maths.h"
@@ -39,7 +42,6 @@
 
 #include "compass_mag3110.h"
 
-#ifdef USE_MAG_MAG3110
 
 #define MAG3110_MAG_I2C_ADDRESS     0x0E
 
@@ -57,48 +59,60 @@
 #define MAG3110_MAG_REG_CTRL_REG1    0x10
 #define MAG3110_MAG_REG_CTRL_REG2    0x11
 
-bool mag3110detect(mag_t *mag)
+#define DETECTION_MAX_RETRY_COUNT   5
+bool mag3110detect(magDev_t *mag)
 {
-    bool ack = false;
-    uint8_t sig = 0;
+    for (int retryCount = 0; retryCount < DETECTION_MAX_RETRY_COUNT; retryCount++) {
+        uint8_t sig = 0;
+        bool ack = i2cRead(MAG_I2C_INSTANCE, MAG3110_MAG_I2C_ADDRESS, MAG3110_MAG_REG_WHO_AM_I, 1, &sig);
+        if (ack && sig == 0xC4) {
+            mag->init = mag3110Init;
+            mag->read = mag3110Read;
+            return true;
+        }
+    }
 
-    ack = i2cRead(MAG3110_MAG_I2C_ADDRESS, MAG3110_MAG_REG_WHO_AM_I, 1, &sig);
-    if (!ack || sig != 0xC4)
-        return false;
-
-    mag->init = mag3110Init;
-    mag->read = mag3110Read;
-
-    return true;
+    return false;
 }
 
-void mag3110Init()
+bool mag3110Init()
 {
-    bool ack;
-    UNUSED(ack);
-
-    ack = i2cWrite(MAG3110_MAG_I2C_ADDRESS, MAG3110_MAG_REG_CTRL_REG1, 0x01); //  active mode 80 Hz ODR with OSR = 1
+    bool ack = i2cWrite(MAG_I2C_INSTANCE, MAG3110_MAG_I2C_ADDRESS, MAG3110_MAG_REG_CTRL_REG1, 0x01); //  active mode 80 Hz ODR with OSR = 1
     delay(20);
+    if (!ack) {
+        return false;
+    }
 
-    ack = i2cWrite(MAG3110_MAG_I2C_ADDRESS, MAG3110_MAG_REG_CTRL_REG2, 0xA0); // AUTO_MRST_EN + RAW
+    ack = i2cWrite(MAG_I2C_INSTANCE, MAG3110_MAG_I2C_ADDRESS, MAG3110_MAG_REG_CTRL_REG2, 0xA0); // AUTO_MRST_EN + RAW
     delay(10);
+    if (!ack) {
+        return false;
+    }
+
+    return true;
 }
 
 #define BIT_STATUS_REG_DATA_READY               (1 << 3)
 
 bool mag3110Read(int16_t *magData)
 {
-    bool ack;
-    UNUSED(ack);
     uint8_t status;
     uint8_t buf[6];
 
-    ack = i2cRead(MAG3110_MAG_I2C_ADDRESS, MAG3110_MAG_REG_STATUS, 1, &status);
+    // set magData to zero for case of failed read
+    magData[X] = 0;
+    magData[Y] = 0;
+    magData[Z] = 0;
+
+    bool ack = i2cRead(MAG_I2C_INSTANCE, MAG3110_MAG_I2C_ADDRESS, MAG3110_MAG_REG_STATUS, 1, &status);
     if (!ack || (status & BIT_STATUS_REG_DATA_READY) == 0) {
         return false;
     }
 
-    ack = i2cRead(MAG3110_MAG_I2C_ADDRESS, MAG3110_MAG_REG_HXL, 6, buf);
+    ack = i2cRead(MAG_I2C_INSTANCE, MAG3110_MAG_I2C_ADDRESS, MAG3110_MAG_REG_HXL, 6, buf);
+    if (!ack) {
+        return false;
+    }
 
     magData[X] = (int16_t)(buf[0] << 8 | buf[1]);
     magData[Y] = (int16_t)(buf[2] << 8 | buf[3]);

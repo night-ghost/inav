@@ -21,19 +21,24 @@
 #include <math.h>
 
 #include <platform.h>
-#include "build_config.h"
 
 #ifdef SONAR
 
+#include "build/build_config.h"
+
 #include "common/maths.h"
+#include "common/utils.h"
 
 #include "config/config.h"
-#include "config/runtime_config.h"
+#include "config/feature.h"
 
-#include "drivers/gpio.h"
+#include "drivers/io.h"
+#include "drivers/logging.h"
 #include "drivers/sonar_hcsr04.h"
 #include "drivers/sonar_srf10.h"
 #include "drivers/rangefinder.h"
+
+#include "fc/runtime_config.h"
 
 #include "sensors/sensors.h"
 #include "sensors/rangefinder.h"
@@ -53,6 +58,36 @@ static float rangefinderMaxTiltCos;
 
 static int32_t calculatedAltitude;
 
+/*
+ * Detect which rangefinder is present
+ */
+rangefinderType_e rangefinderDetect(void)
+{
+    rangefinderType_e rangefinderType = RANGEFINDER_NONE;
+    if (feature(FEATURE_SONAR)) {
+        // the user has set the sonar feature, so assume they have an HC-SR04 plugged in,
+        // since there is no way to detect it
+        rangefinderType = RANGEFINDER_HCSR04;
+    }
+#ifdef USE_SONAR_SRF10
+    if (srf10_detect()) {
+        // if an SFR10 sonar rangefinder is detected then use it in preference to the assumed HC-SR04
+        rangefinderType = RANGEFINDER_SRF10;
+    }
+#endif
+
+    addBootlogEvent6(BOOT_EVENT_RANGEFINDER_DETECTION, BOOT_EVENT_FLAGS_NONE, rangefinderType, 0, 0, 0);
+
+    requestedSensors[SENSOR_INDEX_RANGEFINDER] = rangefinderType;   // FIXME: Make rangefinder type selectable from CLI
+    detectedSensors[SENSOR_INDEX_RANGEFINDER] = rangefinderType;
+
+    if (rangefinderType != RANGEFINDER_NONE) {
+        sensorsSet(SENSOR_SONAR);
+    }
+
+    return rangefinderType;
+}
+
 static const sonarHcsr04Hardware_t *sonarGetHardwareConfigurationForHCSR04(currentSensor_e currentSensor)
 {
 #if defined(SONAR_PWM_TRIGGER_PIN)
@@ -67,34 +102,16 @@ static const sonarHcsr04Hardware_t *sonarGetHardwareConfigurationForHCSR04(curre
     if (feature(FEATURE_SOFTSERIAL)
             || feature(FEATURE_RX_PARALLEL_PWM )
             || (feature(FEATURE_CURRENT_METER) && currentSensor == CURRENT_SENSOR_ADC)) {
-        sonarHcsr04Hardware = (sonarHcsr04Hardware_t){
-            .trigger_pin = SONAR_PWM_TRIGGER_PIN,
-            .trigger_gpio = SONAR_PWM_TRIGGER_GPIO,
-            .echo_pin = SONAR_PWM_ECHO_PIN,
-            .echo_gpio = SONAR_PWM_ECHO_GPIO,
-            .exti_line = SONAR_PWM_EXTI_LINE,
-            .exti_pin_source = SONAR_PWM_EXTI_PIN_SOURCE,
-            .exti_irqn = SONAR_PWM_EXTI_IRQN };
+        sonarHcsr04Hardware.triggerTag = IO_TAG(SONAR_TRIGGER_PIN_PWM);
+        sonarHcsr04Hardware.echoTag = IO_TAG(SONAR_ECHO_PIN_PWM);
     } else {
-        sonarHcsr04Hardware = (sonarHcsr04Hardware_t){
-            .trigger_pin = SONAR_TRIGGER_PIN,
-            .trigger_gpio = SONAR_TRIGGER_GPIO,
-            .echo_pin = SONAR_ECHO_PIN,
-            .echo_gpio = SONAR_ECHO_GPIO,
-            .exti_line = SONAR_EXTI_LINE,
-            .exti_pin_source = SONAR_EXTI_PIN_SOURCE,
-            .exti_irqn = SONAR_EXTI_IRQN };
+        sonarHcsr04Hardware.triggerTag = IO_TAG(SONAR_TRIGGER_PIN);
+        sonarHcsr04Hardware.echoTag = IO_TAG(SONAR_ECHO_PIN);
     }
 #elif defined(SONAR_TRIGGER_PIN)
     UNUSED(currentSensor);
-    sonarHcsr04Hardware = (sonarHcsr04Hardware_t){
-        .trigger_pin = SONAR_TRIGGER_PIN,
-        .trigger_gpio = SONAR_TRIGGER_GPIO,
-        .echo_pin = SONAR_ECHO_PIN,
-        .echo_gpio = SONAR_ECHO_GPIO,
-        .exti_line = SONAR_EXTI_LINE,
-        .exti_pin_source = SONAR_EXTI_PIN_SOURCE,
-        .exti_irqn = SONAR_EXTI_IRQN };
+    sonarHcsr04Hardware.triggerTag = IO_TAG(SONAR_TRIGGER_PIN);
+    sonarHcsr04Hardware.echoTag = IO_TAG(SONAR_ECHO_PIN);
 #else
 #error Sonar not defined for target
 #endif
@@ -224,6 +241,11 @@ int32_t rangefinderCalculateAltitude(int32_t rangefinderDistance, float cosTiltA
 int32_t rangefinderGetLatestAltitude(void)
 {
     return calculatedAltitude;
+}
+
+bool isRangefinderHealthy(void)
+{
+    return true;
 }
 #endif
 

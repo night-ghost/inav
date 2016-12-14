@@ -17,31 +17,15 @@
 
 #pragma once
 
+#include "common/time.h"
+
 void systemInit(void);
-void delayMicroseconds(uint32_t us);
-void delay(uint32_t ms);
+void delayMicroseconds(timeUs_t us);
+void delay(timeMs_t ms);
 
-uint32_t micros(void);
-uint32_t millis(void);
-
-// failure
-void failureMode(uint8_t mode);
-
-// bootloader/IAP
-void systemReset(void);
-void systemResetToBootloader(void);
-bool isMPUSoftReset(void);
-
-void enableGPIOPowerUsageAndNoiseReductions(void);
-// current crystal frequency - 8 or 12MHz
-extern uint32_t hse_value;
-
-typedef void extiCallbackHandlerFunc(void);
-
-void registerExtiCallbackHandler(IRQn_Type irqn, extiCallbackHandlerFunc *fn);
-void unregisterExtiCallbackHandler(IRQn_Type irqn, extiCallbackHandlerFunc *fn);
-
-extern uint32_t cachedRccCsrValue;
+timeUs_t micros(void);
+timeUs_t microsISR(void);
+timeMs_t millis(void);
 
 typedef enum {
     FAILURE_DEVELOPER = 0,
@@ -52,4 +36,37 @@ typedef enum {
     FAILURE_FLASH_WRITE_FAILED,
     FAILURE_GYRO_INIT_FAILED
 } failureMode_e;
+
+// failure
+void failureMode(failureMode_e mode);
+
+// bootloader/IAP
+void systemReset(void);
+void systemResetToBootloader(void);
+bool isMPUSoftReset(void);
+void cycleCounterInit(void);
+void checkForBootLoaderRequest(void);
+
+void enableGPIOPowerUsageAndNoiseReductions(void);
+// current crystal frequency - 8 or 12MHz
+
+extern uint32_t hse_value;
+
+typedef void extiCallbackHandlerFunc(void);
+
+typedef struct extiCallbackHandlerConfig_s {
+    IRQn_Type irqn;
+    extiCallbackHandlerFunc* fn;
+} extiCallbackHandlerConfig_t;
+
+#ifndef EXTI_CALLBACK_HANDLER_COUNT
+#define EXTI_CALLBACK_HANDLER_COUNT 1
+#endif
+
+extern extiCallbackHandlerConfig_t extiHandlerConfigs[EXTI_CALLBACK_HANDLER_COUNT];
+
+void registerExtiCallbackHandler(IRQn_Type irqn, extiCallbackHandlerFunc *fn);
+void unregisterExtiCallbackHandler(IRQn_Type irqn, extiCallbackHandlerFunc *fn);
+
+extern uint32_t cachedRccCsrValue;
 

@@ -22,19 +22,18 @@
 #include <math.h>
 
 #include "platform.h"
-#include "build_config.h"
 
 #if defined(GPS) && defined(GPS_PROTO_NMEA)
 
-#include "debug.h"
+#include "build/build_config.h"
+#include "build/debug.h"
 
 #include "common/maths.h"
 #include "common/axis.h"
 #include "common/utils.h"
 
-#include "drivers/system.h"
 #include "drivers/serial.h"
-#include "drivers/serial_uart.h"
+#include "drivers/system.h"
 
 #include "io/serial.h"
 #include "io/gps.h"
@@ -43,7 +42,7 @@
 #include "flight/gps_conversion.h"
 
 #include "config/config.h"
-#include "config/runtime_config.h"
+#include "fc/runtime_config.h"
 
 /* This is a light implementation of a GPS frame decoding
    This should work with most of modern GPS devices configured to output 5 frames.
@@ -96,13 +95,15 @@ typedef struct gpsDataNmea_s {
     uint16_t hdop;
 } gpsDataNmea_t;
 
+#define NMEA_BUFFER_SIZE        16
+
 static bool gpsNewFrameNMEA(char c)
 {
     static gpsDataNmea_t gps_Msg;
 
     uint8_t frameOK = 0;
     static uint8_t param = 0, offset = 0, parity = 0;
-    static char string[15];
+    static char string[NMEA_BUFFER_SIZE];
     static uint8_t checksum_param, gps_frame = NO_FRAME;
 
     switch (c) {
@@ -116,10 +117,12 @@ static bool gpsNewFrameNMEA(char c)
             string[offset] = 0;
             if (param == 0) {       //frame identification
                 gps_frame = NO_FRAME;
-                if (string[0] == 'G' && string[1] == 'P' && string[2] == 'G' && string[3] == 'G' && string[4] == 'A')
+                if (strcmp(string, "GPGGA") == 0 || strcmp(string, "GNGGA") == 0) {
                     gps_frame = FRAME_GGA;
-                if (string[0] == 'G' && string[1] == 'P' && string[2] == 'R' && string[3] == 'M' && string[4] == 'C')
+                }
+                else if (strcmp(string, "GPRMC") == 0 || strcmp(string, "GNRMC") == 0) {
                     gps_frame = FRAME_RMC;
+                }
             }
 
             switch (gps_frame) {
@@ -222,10 +225,13 @@ static bool gpsNewFrameNMEA(char c)
             checksum_param = 0;
             break;
         default:
-            if (offset < 15)
+            if (offset < (NMEA_BUFFER_SIZE-1)) {    // leave 1 byte to trailing zero
                 string[offset++] = c;
-            if (!checksum_param)
-                parity ^= c;
+
+                // only checksum if character is recorded and used (will cause checksum failure on dropped characters)
+                if (!checksum_param)
+                    parity ^= c;
+            }
     }
     return frameOK;
 }

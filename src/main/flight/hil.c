@@ -21,17 +21,17 @@
 #include <stdint.h>
 #include <math.h>
 
-#include "build_config.h"
+#include "build/build_config.h"
+
 #include "platform.h"
-#include "debug.h"
+#include "build/debug.h"
+
 
 #include "common/axis.h"
 #include "common/maths.h"
 #include "common/filter.h"
 
 #include "drivers/system.h"
-#include "drivers/sensor.h"
-#include "drivers/accgyro.h"
 
 #include "sensors/sensors.h"
 #include "sensors/acceleration.h"
@@ -43,7 +43,8 @@
 #include "flight/navigation_rewrite.h"
 #include "flight/navigation_rewrite_private.h"
 
-#include "config/runtime_config.h"
+#include "fc/runtime_config.h"
+
 #include "config/config.h"
 
 #ifdef HIL

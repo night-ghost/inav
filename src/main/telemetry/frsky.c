@@ -22,6 +22,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include "platform.h"
 
@@ -31,12 +32,7 @@
 #include "common/axis.h"
 
 #include "drivers/system.h"
-#include "drivers/sensor.h"
-#include "drivers/accgyro.h"
-#include "drivers/gpio.h"
-#include "drivers/timer.h"
 #include "drivers/serial.h"
-
 
 #include "sensors/sensors.h"
 #include "sensors/acceleration.h"
@@ -45,7 +41,9 @@
 #include "sensors/battery.h"
 
 #include "io/serial.h"
-#include "io/rc_controls.h"
+#include "fc/rc_controls.h"
+#include "fc/runtime_config.h"
+
 #include "io/gps.h"
 
 #include "rx/rx.h"
@@ -55,8 +53,8 @@
 #include "flight/imu.h"
 #include "flight/navigation_rewrite.h"
 
-#include "config/runtime_config.h"
 #include "config/config.h"
+#include "config/feature.h"
 
 #include "telemetry/telemetry.h"
 #include "telemetry/frsky.h"
@@ -166,16 +164,16 @@ static void sendAccel(void)
 
     for (i = 0; i < 3; i++) {
         sendDataHead(ID_ACC_X + i);
-        serialize16(accADC[i] * 1000 / acc.acc_1G);
+        serialize16(acc.accADC[i] * 1000 / acc.dev.acc_1G);
     }
 }
 
 static void sendBaro(void)
 {
     sendDataHead(ID_ALTITUDE_BP);
-    serialize16(BaroAlt / 100);
+    serialize16(baro.BaroAlt / 100);
     sendDataHead(ID_ALTITUDE_AP);
-    serialize16(ABS(BaroAlt % 100));
+    serialize16(ABS(baro.BaroAlt % 100));
 }
 
 #ifdef GPS
@@ -212,7 +210,7 @@ static void sendTemperature1(void)
 {
     sendDataHead(ID_TEMPRATURE1);
 #ifdef BARO
-    serialize16((baroTemperature + 50)/ 100); //Airmamaf
+    serialize16((baro.baroTemperature + 50)/ 100); //Airmamaf
 #else
     serialize16(telemTemperature1 / 10);
 #endif
@@ -307,7 +305,7 @@ static void sendFakeLatLong(void)
 {
     // Heading is only displayed on OpenTX if non-zero lat/long is also sent
     int32_t coord[2] = {0,0};
-    
+
     coord[LAT] = (telemetryConfig->gpsNoFixLatitude * GPS_DEGREES_DIVIDER);
     coord[LON] = (telemetryConfig->gpsNoFixLongitude * GPS_DEGREES_DIVIDER);
 
@@ -352,7 +350,7 @@ static void sendGPSLatLong(void)
 static void sendVario(void)
 {
     sendDataHead(ID_VERT_SPEED);
-    serialize16((uint16_t)getEstimatedActualVelocity(Z));
+    serialize16((int16_t)lrintf(getEstimatedActualVelocity(Z)));
 }
 
 /*
@@ -409,11 +407,16 @@ static void sendVoltageAmp(void)
         serialize16(vbat);
     } else {
         uint16_t voltage = (vbat * 110) / 21;
-
+        uint16_t vfasVoltage;
+        if (telemetryConfig->frsky_vfas_cell_voltage) {
+            vfasVoltage = voltage / batteryCellCount;
+        } else {
+            vfasVoltage = voltage;
+        }
         sendDataHead(ID_VOLTAGE_AMP_BP);
-        serialize16(voltage / 100);
+        serialize16(vfasVoltage / 100);
         sendDataHead(ID_VOLTAGE_AMP_AP);
-        serialize16(((voltage % 100) + 5) / 10);
+        serialize16(((vfasVoltage % 100) + 5) / 10);
     }
 }
 

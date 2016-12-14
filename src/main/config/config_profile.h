@@ -17,15 +17,19 @@
 
 #pragma once
 
+#ifdef USE_SERVOS
+#include "flight/mixer.h"
+#include "flight/servos.h"
+#include "io/gimbal.h"
+#endif
+
 typedef struct profile_s {
     pidProfile_t pidProfile;
 
     uint8_t defaultRateProfileIndex;
 
-    int16_t mag_declination;                // Get your magnetic decliniation from here : http://magnetic-declination.com/
-                                            // For example, -6deg 37min, = -637 Japan, format is [sign]dddmm (degreesminutes) default is zero.
-
     modeActivationCondition_t modeActivationConditions[MAX_MODE_ACTIVATION_CONDITION_COUNT];
+    modeActivationOperator_e modeActivationOperator;
 
     adjustmentRange_t adjustmentRanges[MAX_ADJUSTMENT_RANGE_COUNT];
 
@@ -40,5 +44,9 @@ typedef struct profile_s {
     servoParam_t servoConf[MAX_SUPPORTED_SERVOS]; // servo configuration
     // gimbal-related configuration
     gimbalConfig_t gimbalConfig;
+
+    uint16_t flaperon_throw_offset;
+    uint8_t flaperon_throw_inverted;
+
 #endif
 } profile_t;

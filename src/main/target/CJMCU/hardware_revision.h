@@ -14,6 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with Cleanflight.  If not, see <http://www.gnu.org/licenses/>.
  */
+#pragma once
 
 typedef enum cjmcuHardwareRevision_t {
     UNKNOWN = 0,
@@ -26,4 +27,5 @@ extern uint8_t hardwareRevision;
 void updateHardwareRevision(void);
 void detectHardwareRevision(void);
 
-void spiBusInit(void);
+struct extiConfig_s;
+const struct extiConfig_s *selectMPUIntExtiConfigByHardwareRevision(void);

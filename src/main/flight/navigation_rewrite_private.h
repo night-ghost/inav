@@ -21,7 +21,7 @@
 
 #if defined(NAV)
 
-#include "config/runtime_config.h"
+#include "fc/runtime_config.h"
 
 #define MIN_POSITION_UPDATE_RATE_HZ         5       // Minimum position update rate at which XYZ controllers would be applied
 #define NAV_THROTTLE_CUTOFF_FREQENCY_HZ     4       // low-pass filter on throttle output
@@ -36,6 +36,7 @@
 
 #define HZ2US(hz)   (1000000 / (hz))
 #define US2S(us)    ((us) * 1e-6f)
+#define US2MS(us)   ((us) * 1e-3f)
 #define MS2US(ms)   ((ms) * 1000)
 #define HZ2S(hz)    US2S(HZ2US(hz))
 
@@ -74,6 +75,7 @@ typedef struct navigationFlags_s {
 
     // Behaviour modifiers
     bool isGCSAssistedNavigationEnabled;    // Does iNav accept WP#255 - follow-me etc.
+    bool isGCSAssistedNavigationReset;      // GCS control was disabled - indicate that so code could take action accordingly
     bool isTerrainFollowEnabled;            // Does iNav use sonar for terrain following (adjusting baro altitude target according to sonar readings)
 
     bool forcedRTHActivated;
@@ -138,10 +140,6 @@ typedef enum {
     NAV_FSM_EVENT_SUCCESS,
     NAV_FSM_EVENT_ERROR,
 
-    NAV_FSM_EVENT_STATE_SPECIFIC,               // State-specific event
-    NAV_FSM_EVENT_SWITCH_TO_WAYPOINT_FINISHED = NAV_FSM_EVENT_STATE_SPECIFIC,
-    NAV_FSM_EVENT_SWITCH_TO_RTH_3D_LANDING = NAV_FSM_EVENT_STATE_SPECIFIC,
-
     NAV_FSM_EVENT_SWITCH_TO_IDLE,
     NAV_FSM_EVENT_SWITCH_TO_ALTHOLD,
     NAV_FSM_EVENT_SWITCH_TO_POSHOLD_2D,
@@ -151,6 +149,13 @@ typedef enum {
     NAV_FSM_EVENT_SWITCH_TO_RTH_3D,
     NAV_FSM_EVENT_SWITCH_TO_WAYPOINT,
     NAV_FSM_EVENT_SWITCH_TO_EMERGENCY_LANDING,
+    NAV_FSM_EVENT_SWITCH_TO_LAUNCH,
+
+    NAV_FSM_EVENT_STATE_SPECIFIC_1,             // State-specific event
+    NAV_FSM_EVENT_STATE_SPECIFIC_2,             // State-specific event
+    NAV_FSM_EVENT_SWITCH_TO_RTH_3D_LANDING = NAV_FSM_EVENT_STATE_SPECIFIC_1,
+    NAV_FSM_EVENT_SWITCH_TO_WAYPOINT_RTH_LAND = NAV_FSM_EVENT_STATE_SPECIFIC_1,
+    NAV_FSM_EVENT_SWITCH_TO_WAYPOINT_FINISHED = NAV_FSM_EVENT_STATE_SPECIFIC_2,
 
     NAV_FSM_EVENT_COUNT,
 } navigationFSMEvent_t;
@@ -190,11 +195,18 @@ typedef enum {
     NAV_STATE_WAYPOINT_PRE_ACTION,              // 23
     NAV_STATE_WAYPOINT_IN_PROGRESS,             // 24
     NAV_STATE_WAYPOINT_REACHED,                 // 25
-    NAV_STATE_WAYPOINT_FINISHED,                // 26
+    NAV_STATE_WAYPOINT_NEXT,                    // 26
+    NAV_STATE_WAYPOINT_FINISHED,                // 27
+    NAV_STATE_WAYPOINT_RTH_LAND,                // 28
 
-    NAV_STATE_EMERGENCY_LANDING_INITIALIZE,     // 27
-    NAV_STATE_EMERGENCY_LANDING_IN_PROGRESS,    // 28
-    NAV_STATE_EMERGENCY_LANDING_FINISHED,       // 29
+    NAV_STATE_EMERGENCY_LANDING_INITIALIZE,     // 29
+    NAV_STATE_EMERGENCY_LANDING_IN_PROGRESS,    // 30
+    NAV_STATE_EMERGENCY_LANDING_FINISHED,       // 31
+
+    NAV_STATE_LAUNCH_INITIALIZE,                // 32
+    NAV_STATE_LAUNCH_WAIT,                      // 33
+    NAV_STATE_LAUNCH_MOTOR_DELAY,               // 34
+    NAV_STATE_LAUNCH_IN_PROGRESS,               // 35
 
     NAV_STATE_COUNT,
 } navigationFSMState_t;
@@ -205,19 +217,20 @@ typedef enum {
     NAV_CTL_POS             = (1 << 1),     // Position controller
     NAV_CTL_YAW             = (1 << 2),
     NAV_CTL_EMERG           = (1 << 3),
+    NAV_CTL_LAUNCH          = (1 << 4),
 
     /* Navigation requirements for flight modes and controllers */
-    NAV_REQUIRE_ANGLE       = (1 << 4),
-    NAV_REQUIRE_ANGLE_FW    = (1 << 5),
-    NAV_REQUIRE_MAGHOLD     = (1 << 6),
-    NAV_REQUIRE_THRTILT     = (1 << 7),
+    NAV_REQUIRE_ANGLE       = (1 << 5),
+    NAV_REQUIRE_ANGLE_FW    = (1 << 6),
+    NAV_REQUIRE_MAGHOLD     = (1 << 7),
+    NAV_REQUIRE_THRTILT     = (1 << 8),
 
     /* Navigation autonomous modes */
-    NAV_AUTO_RTH            = (1 << 8),
-    NAV_AUTO_WP             = (1 << 9),
+    NAV_AUTO_RTH            = (1 << 9),
+    NAV_AUTO_WP             = (1 << 10),
 
     /* Adjustments for navigation modes from RC input */
-    NAV_RC_ALT              = (1 << 10),
+    NAV_RC_ALT              = (1 << 11),
     NAV_RC_POS              = (1 << 12),
     NAV_RC_YAW              = (1 << 13),
 } navigationFSMStateFlags_t;
@@ -276,7 +289,7 @@ typedef struct {
     pidProfile_t *              pidProfile;
     rxConfig_t *                rxConfig;
     flight3DConfig_t *          flight3DConfig;
-    escAndServoConfig_t *       escAndServoConfig;
+    motorConfig_t *             motorConfig;
 } navigationPosControl_t;
 
 extern navigationPosControl_t posControl;
@@ -289,20 +302,20 @@ void navPInit(pController_t *p, float _kP);
 
 bool isThrustFacingDownwards(void);
 void updateAltitudeTargetFromClimbRate(float climbRate, navUpdateAltitudeFromRateMode_e mode);
-uint32_t calculateDistanceToDestination(t_fp_vector * destinationPos);
-int32_t calculateBearingToDestination(t_fp_vector * destinationPos);
+uint32_t calculateDistanceToDestination(const t_fp_vector * destinationPos);
+int32_t calculateBearingToDestination(const t_fp_vector * destinationPos);
 void resetLandingDetector(void);
 bool isLandingDetected(void);
 
 navigationFSMStateFlags_t navGetCurrentStateFlags(void);
 
-void setHomePosition(t_fp_vector * pos, int32_t yaw, navSetWaypointFlags_t useMask);
-void setDesiredPosition(t_fp_vector * pos, int32_t yaw, navSetWaypointFlags_t useMask);
+void setHomePosition(const t_fp_vector * pos, int32_t yaw, navSetWaypointFlags_t useMask);
+void setDesiredPosition(const t_fp_vector * pos, int32_t yaw, navSetWaypointFlags_t useMask);
 void setDesiredSurfaceOffset(float surfaceOffset);
 void setDesiredPositionToFarAwayTarget(int32_t yaw, int32_t distance, navSetWaypointFlags_t useMask);
 
-bool isWaypointReached(navWaypointPosition_t * waypoint);
-bool isWaypointMissed(navWaypointPosition_t * waypoint);
+bool isWaypointReached(const navWaypointPosition_t * waypoint);
+bool isWaypointMissed(const navWaypointPosition_t * waypoint);
 bool isApproachingLastWaypoint(void);
 float getActiveWaypointSpeed(void);
 
@@ -326,7 +339,7 @@ bool adjustMulticopterAltitudeFromRCInput(void);
 bool adjustMulticopterHeadingFromRCInput(void);
 bool adjustMulticopterPositionFromRCInput(void);
 
-void applyMulticopterNavigationController(navigationFSMStateFlags_t navStateFlags, uint32_t currentTime);
+void applyMulticopterNavigationController(navigationFSMStateFlags_t navStateFlags, timeUs_t currentTimeUs);
 
 void resetFixedWingLandingDetector(void);
 void resetMulticopterLandingDetector(void);
@@ -347,8 +360,15 @@ bool adjustFixedWingAltitudeFromRCInput(void);
 bool adjustFixedWingHeadingFromRCInput(void);
 bool adjustFixedWingPositionFromRCInput(void);
 
-void applyFixedWingNavigationController(navigationFSMStateFlags_t navStateFlags, uint32_t currentTime);
+void applyFixedWingNavigationController(navigationFSMStateFlags_t navStateFlags, timeUs_t currentTimeUs);
 
 void calculateFixedWingInitialHoldPosition(t_fp_vector * pos);
+
+/* Fixed-wing launch controller */
+void resetFixedWingLaunchController(timeUs_t currentTimeUs);
+bool isFixedWingLaunchDetected(void);
+void enableFixedWingLaunchController(timeUs_t currentTimeUs);
+bool isFixedWingLaunchFinishedOrAborted(void);
+void applyFixedWingLaunchController(timeUs_t currentTimeUs);
 
 #endif

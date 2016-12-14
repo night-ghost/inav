@@ -16,8 +16,8 @@
  */
 
 #pragma once
-#include "gpio.h"
-#include "timer.h"
+
+#include "io_types.h"
 
 #if defined(USE_QUAD_MIXER_ONLY)
 #define MAX_PWM_MOTORS  4
@@ -38,36 +38,29 @@
 #define MAX_SERVOS  8
 #endif
 
+#define PWM_TIMER_MHZ 1
 
 #define PULSE_1MS   (1000)      // 1ms pulse width
 
 #define MAX_INPUTS  8
 
-#define PWM_TIMER_MHZ 1
-#define ONESHOT125_TIMER_MHZ 8
-#define PWM_BRUSHED_TIMER_MHZ 8
-
-
-typedef struct sonarGPIOConfig_s {
-    GPIO_TypeDef *gpio;
-    uint16_t triggerPin;
-    uint16_t echoPin;
-} sonarGPIOConfig_t;
+typedef struct sonarIOConfig_s {
+    ioTag_t triggerTag;
+    ioTag_t echoTag;
+} sonarIOConfig_t;
 
 typedef struct drv_pwm_config_s {
+    bool enablePWMOutput;
     bool useParallelPWM;
     bool usePPM;
     bool useSerialRx;
     bool useRSSIADC;
     bool useCurrentMeterADC;
-#ifdef STM32F10X
     bool useUART2;
-#endif
-#ifdef STM32F303xC
     bool useUART3;
-#endif
+    bool useUART6;
     bool useVbat;
-    bool useOneshot;
+    bool useFastPwm;
     bool useSoftSerial;
     bool useLEDStrip;
 #ifdef SONAR
@@ -80,10 +73,11 @@ typedef struct drv_pwm_config_s {
     uint16_t servoCenterPulse;
 #endif
     bool airplane;       // fixed wing hardware config, lots of servos etc
+    uint8_t pwmProtocolType;
     uint16_t motorPwmRate;
     uint16_t idlePulse;  // PWM value to use when initializing the driver. set this to either PULSE_1MS (regular pwm),
                          // some higher value (used by 3d mode), or 0, for brushed pwm drivers.
-    sonarGPIOConfig_t *sonarGPIOConfig;
+    sonarIOConfig_t sonarIOConfig;
 } drv_pwm_config_t;
 
 
@@ -100,16 +94,16 @@ typedef enum {
     PWM_PF_SERVO = (1 << 1),
     PWM_PF_MOTOR_MODE_BRUSHED = (1 << 2),
     PWM_PF_OUTPUT_PROTOCOL_PWM = (1 << 3),
-    PWM_PF_OUTPUT_PROTOCOL_ONESHOT = (1 << 4),
+    PWM_PF_OUTPUT_PROTOCOL_FASTPWM = (1 << 4),
     PWM_PF_PPM = (1 << 5),
     PWM_PF_PWM = (1 << 6)
 } pwmPortFlags_e;
 
-
+struct timerHardware_s;
 typedef struct pwmPortConfiguration_s {
     uint8_t index;
     pwmPortFlags_e flags;
-    const timerHardware_t *timerHardware;
+    const struct timerHardware_s *timerHardware;
 } pwmPortConfiguration_t;
 
 typedef struct pwmIOConfiguration_s {
@@ -138,7 +132,11 @@ enum {
     PWM13,
     PWM14,
     PWM15,
-    PWM16
+    PWM16,
+    PWM17,
+    PWM18,
+    PWM19,
+    PWM20
 };
 
 extern const uint16_t multiPPM[];
@@ -146,4 +144,5 @@ extern const uint16_t multiPWM[];
 extern const uint16_t airPPM[];
 extern const uint16_t airPWM[];
 
+pwmIOConfiguration_t *pwmInit(drv_pwm_config_t *init);
 pwmIOConfiguration_t *pwmGetOutputConfiguration(void);

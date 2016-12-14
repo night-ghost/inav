@@ -21,7 +21,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "drivers/rx_nrf24l01.h"
+#include "rx_spi.h"
+#include "rx_nrf24l01.h"
 #include "common/maths.h"
 
 
@@ -49,13 +50,6 @@ static uint8_t bitReverse(uint8_t bIn)
     return bOut;
 }
 
-/*void XN297_UnscramblePayload(uint8_t* data, int len)
-{
-    for (uint8_t ii = 0; ii < len; ++ii) {
-        data[ii] = bitReverse(data[ii] ^ xn297_data_scramble[ii]);
-    }
-}
-*/
 
 #define RX_TX_ADDR_LEN 5
 

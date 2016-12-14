@@ -66,10 +66,10 @@ To use the printf you need to supply your own character output function,
 something like :
 
 void putc ( void* p, char c)
-	{
-	while (!SERIAL_PORT_EMPTY) ;
-	SERIAL_PORT_TX_REGISTER = c;
-	}
+    {
+    while (!SERIAL_PORT_EMPTY) ;
+    SERIAL_PORT_TX_REGISTER = c;
+    }
 
 Before you can call printf you need to initialize it to use your
 character output function with something like:
@@ -107,8 +107,6 @@ regs Kusti, 23.10.2004
 
 #include <stdarg.h>
 
-#include "drivers/serial.h"
-
 void init_printf(void *putp, void (*putf) (void *, char));
 
 int tfp_printf(const char *fmt, ...);
@@ -119,6 +117,8 @@ int tfp_format(void *putp, void (*putf) (void *, char), const char *fmt, va_list
 #define printf tfp_printf
 #define sprintf tfp_sprintf
 
-void setPrintfSerialPort(serialPort_t *serialPort);
+void printfSupportInit(void);
+struct serialPort_s;
+void setPrintfSerialPort(struct serialPort_s *serialPort);
 
 #endif

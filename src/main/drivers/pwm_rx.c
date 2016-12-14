@@ -20,21 +20,20 @@
 
 #include <platform.h>
 
-#include "platform.h"
-#include "build_config.h"
-
 #ifndef SKIP_RX_PWM_PPM
 
-#include "debug.h"
+#include "build/build_config.h"
+#include "build/debug.h"
 
 #include "common/utils.h"
 
 #include "system.h"
 
 #include "nvic.h"
-#include "gpio.h"
+#include "io.h"
 #include "timer.h"
 
+#include "pwm_output.h"
 #include "pwm_mapping.h"
 
 #include "pwm_rx.h"
@@ -181,7 +180,6 @@ static void ppmOverflowCallback(timerOvrHandlerRec_t* cbRec, captureCompare_t ca
     if (capture == PPM_TIMER_PERIOD - 1) {
         ppmDev.overflowed = true;
     }
-
 }
 
 static void ppmEdgeCallback(timerCCHandlerRec_t* cbRec, captureCompare_t capture)

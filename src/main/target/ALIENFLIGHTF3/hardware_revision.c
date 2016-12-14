@@ -20,7 +20,8 @@
 #include <stdlib.h>
 
 #include "platform.h"
-#include "build_config.h"
+#include "build/build_config.h"
+
 
 #include "drivers/system.h"
 #include "drivers/io.h"
@@ -57,7 +58,6 @@ void updateHardwareRevision(void)
 {
 }
 
-/* !!TODO - this has been deferred
 const extiConfig_t *selectMPUIntExtiConfigByHardwareRevision(void)
 {
     // MPU_INT output on V1 PA15
@@ -76,4 +76,3 @@ const extiConfig_t *selectMPUIntExtiConfigByHardwareRevision(void)
         return &alienFlightF3V2MPUIntExtiConfig;
     }
 }
-*/
